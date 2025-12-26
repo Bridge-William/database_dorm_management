@@ -1,0 +1,228 @@
+<!--
+  文件名: templates/user_requests.html
+  说明: 注册申请审批页面
+-->
+{% extends "base.html" %}
+
+{% block title %}注册申请审批 - 学生公寓管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-person-check"></i> 注册申请审批</h2>
+    <div class="btn-group">
+        <a href="{{ url_for('users') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> 返回用户管理
+        </a>
+    </div>
+</div>
+
+<!-- 筛选栏 -->
+<div class="card mb-3">
+    <div class="card-header bg-light">
+        <h6 class="mb-0"><i class="bi bi-filter"></i> 筛选</h6>
+    </div>
+    <div class="card-body">
+        <div class="btn-group" role="group">
+            <a href="{{ url_for('user_requests', status='待审批') }}"
+               class="btn {% if status_filter == '待审批' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                <i class="bi bi-clock"></i> 待审批
+            </a>
+            <a href="{{ url_for('user_requests', status='已批准') }}"
+               class="btn {% if status_filter == '已批准' %}btn-success{% else %}btn-outline-success{% endif %}">
+                <i class="bi bi-check-circle"></i> 已批准
+            </a>
+            <a href="{{ url_for('user_requests', status='已拒绝') }}"
+               class="btn {% if status_filter == '已拒绝' %}btn-danger{% else %}btn-outline-danger{% endif %}">
+                <i class="bi bi-x-circle"></i> 已拒绝
+            </a>
+            <a href="{{ url_for('user_requests', status='全部') }}"
+               class="btn {% if status_filter == '全部' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">
+                <i class="bi bi-list"></i> 全部
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- 申请列表 -->
+<div class="card shadow-sm">
+    <div class="card-body">
+        {% if requests %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th width="5%">ID</th>
+                        <th width="15%">用户名</th>
+                        <th width="15%">真实姓名</th>
+                        <th width="10%">申请权限</th>
+                        <th width="10%">状态</th>
+                        <th width="20%">申请时间</th>
+                        <th width="15%">联系方式</th>
+                        <th width="10%">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for req in requests %}
+                    <tr>
+                        <td><small class="text-muted">{{ req.request_id }}</small></td>
+                        <td>
+                            <strong>{{ req.username }}</strong>
+                        </td>
+                        <td>{{ req.realname }}</td>
+                        <td>
+                            <span class="badge bg-{% if req.permission == '管理员' %}danger{% else %}info{% endif %}">
+                                {{ req.permission }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if req.status == '待审批' %}
+                            <span class="badge bg-warning">
+                                <i class="bi bi-clock"></i> {{ req.status }}
+                            </span>
+                            {% elif req.status == '已批准' %}
+                            <span class="badge bg-success">
+                                <i class="bi bi-check-circle"></i> {{ req.status }}
+                            </span>
+                            {% else %}
+                            <span class="badge bg-danger">
+                                <i class="bi bi-x-circle"></i> {{ req.status }}
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small>{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                        </td>
+                        <td>
+                            {% if req.email %}
+                            <small><i class="bi bi-envelope"></i> {{ req.email }}</small><br>
+                            {% endif %}
+                            {% if req.phone %}
+                            <small><i class="bi bi-phone"></i> {{ req.phone }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if req.status == '待审批' %}
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button class="btn btn-outline-success"
+                                        onclick="approveRequest({{ req.request_id }}, '{{ req.username }}')"
+                                        title="批准">
+                                    <i class="bi bi-check-lg"></i>
+                                </button>
+                                <button class="btn btn-outline-danger"
+                                        onclick="rejectRequest({{ req.request_id }}, '{{ req.username }}')"
+                                        title="拒绝">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                            {% elif req.status == '已批准' %}
+                            <small class="text-success">已批准</small>
+                            {% elif req.status == '已拒绝' %}
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button class="btn btn-outline-secondary"
+                                        onclick="showRemark({{ req.request_id }}, '{{ req.remark or '无备注' }}')"
+                                        title="查看备注">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button class="btn btn-outline-danger"
+                                        onclick="deleteRequest({{ req.request_id }})"
+                                        title="删除记录">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 统计信息 -->
+        <div class="mt-3">
+            <small class="text-muted">
+                共 {{ requests|length }} 条记录 |
+                {% set pending = requests|selectattr('status', 'equalto', '待审批')|list|length %}
+                {% set approved = requests|selectattr('status', 'equalto', '已批准')|list|length %}
+                {% set rejected = requests|selectattr('status', 'equalto', '已拒绝')|list|length %}
+                待审批: {{ pending }} | 已批准: {{ approved }} | 已拒绝: {{ rejected }}
+            </small>
+        </div>
+
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+            <h5 class="mt-3">暂无注册申请</h5>
+            <p>当有用户提交注册申请时，将在这里显示</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 拒绝原因输入模态框 -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">拒绝申请</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" id="rejectForm">
+                <div class="modal-body">
+                    <p>确定要拒绝用户 <strong id="rejectUsername"></strong> 的注册申请吗？</p>
+                    <div class="mb-3">
+                        <label class="form-label">拒绝原因（选填）</label>
+                        <textarea class="form-control" name="remark" rows="3"
+                                  placeholder="例如：信息不完整、权限申请不合理等"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-danger">确认拒绝</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 批准申请
+function approveRequest(requestId, username) {
+    if (confirm(`确定要批准用户 "${username}" 的注册申请吗？\n\n批准后将自动创建用户账户。`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/user_requests/approve/${requestId}`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// 拒绝申请
+function rejectRequest(requestId, username) {
+    document.getElementById('rejectUsername').textContent = username;
+    const form = document.getElementById('rejectForm');
+    form.action = `/user_requests/reject/${requestId}`;
+
+    const modal = new bootstrap.Modal(document.getElementById('rejectModal'));
+    modal.show();
+}
+
+// 查看备注
+function showRemark(requestId, remark) {
+    alert(`申请ID: ${requestId}\n\n备注信息:\n${remark}`);
+}
+
+// 删除已处理的申请记录
+function deleteRequest(requestId) {
+    if (confirm('确定要删除此申请记录吗？\n\n此操作不可恢复。')) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/user_requests/delete/${requestId}`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

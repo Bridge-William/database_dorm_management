@@ -803,12 +803,20 @@ def users():
     cur = mysql.connection.cursor()
     cur.execute("SELECT user_id, username, realname, permission, created_at FROM users ORDER BY user_id")
     users_list = cur.fetchall()
+
+    # 获取待审批数量
+    cur.execute("SELECT COUNT(*) as count FROM user_requests WHERE status = '待审批'")
+    pending_count = cur.fetchone()['count']
+
     cur.close()
 
     # 生成下一个用户ID用于前端显示
     next_user_id = generate_next_user_id()
 
-    return render_template('users.html', users=users_list, next_user_id=next_user_id)
+    return render_template('users.html',
+                           users=users_list,
+                           next_user_id=next_user_id,
+                           pending_requests_count=pending_count)
 
 
 @app.route('/users/add', methods=['POST'])
@@ -935,6 +943,239 @@ def api_get_student(student_id):
     if student:
         return jsonify(student)
     return jsonify({'error': 'Student not found'}), 404
+
+
+# ==================== 用户注册功能 ====================
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    """用户注册页面"""
+    if request.method == 'POST':
+        try:
+            username = request.form.get('username')
+            password = request.form.get('password')
+            password_confirm = request.form.get('password_confirm')
+            realname = request.form.get('realname')
+            permission = request.form.get('permission', '教师')
+            email = request.form.get('email', '')
+            phone = request.form.get('phone', '')
+
+            # 验证输入
+            if not username or not password or not realname:
+                flash('请填写必填项', 'danger')
+                return redirect(url_for('register'))
+
+            if password != password_confirm:
+                flash('两次输入的密码不一致', 'danger')
+                return redirect(url_for('register'))
+
+            if len(password) < 6:
+                flash('密码长度至少6位', 'danger')
+                return redirect(url_for('register'))
+
+            cur = mysql.connection.cursor()
+
+            # 检查用户名是否已存在（在users表或user_requests表中）
+            cur.execute("SELECT username FROM users WHERE username = %s", (username,))
+            if cur.fetchone():
+                flash('用户名已存在', 'danger')
+                cur.close()
+                return redirect(url_for('register'))
+
+            cur.execute("SELECT username FROM user_requests WHERE username = %s AND status = '待审批'", (username,))
+            if cur.fetchone():
+                flash('该用户名已提交注册申请，请等待审批', 'warning')
+                cur.close()
+                return redirect(url_for('register'))
+
+            # 加密密码
+            hashed_password = hash_password(password)
+
+            # 插入注册申请
+            cur.execute("""
+                INSERT INTO user_requests (username, password, realname, permission, email, phone, status)
+                VALUES (%s, %s, %s, %s, %s, %s, '待审批')
+            """, (username, hashed_password, realname, permission, email, phone))
+
+            mysql.connection.commit()
+            cur.close()
+
+            flash('注册申请已提交，请等待管理员审批。审批通过后您将收到通知。', 'success')
+            return redirect(url_for('login'))
+
+        except Exception as e:
+            flash(f'注册失败: {str(e)}', 'danger')
+            return redirect(url_for('register'))
+
+    return render_template('register.html')
+
+
+# ==================== 注册审批管理 ====================
+
+@app.route('/user_requests')
+@admin_required
+def user_requests():
+    """查看待审批的注册申请"""
+    status_filter = request.args.get('status', '待审批')
+
+    cur = mysql.connection.cursor()
+
+    if status_filter == '全部':
+        cur.execute("""
+            SELECT * FROM user_requests 
+            ORDER BY 
+                CASE status 
+                    WHEN '待审批' THEN 1
+                    WHEN '已批准' THEN 2
+                    WHEN '已拒绝' THEN 3
+                END, created_at DESC
+        """)
+    else:
+        cur.execute("""
+            SELECT * FROM user_requests 
+            WHERE status = %s 
+            ORDER BY created_at DESC
+        """, (status_filter,))
+
+    requests_list = cur.fetchall()
+    cur.close()
+
+    return render_template('user_requests.html',
+                           requests=requests_list,
+                           status_filter=status_filter)
+
+
+@app.route('/user_requests/approve/<int:request_id>', methods=['POST'])
+@admin_required
+def approve_user_request(request_id):
+    """批准注册申请"""
+    try:
+        cur = mysql.connection.cursor()
+
+        # 获取申请信息
+        cur.execute("SELECT * FROM user_requests WHERE request_id = %s", (request_id,))
+        user_request = cur.fetchone()
+
+        if not user_request:
+            flash('申请不存在', 'danger')
+            cur.close()
+            return redirect(url_for('user_requests'))
+
+        if user_request['status'] != '待审批':
+            flash('该申请已处理', 'warning')
+            cur.close()
+            return redirect(url_for('user_requests'))
+
+        # 检查用户名是否已存在
+        cur.execute("SELECT username FROM users WHERE username = %s", (user_request['username'],))
+        if cur.fetchone():
+            flash('用户名已存在，请拒绝此申请', 'danger')
+            cur.close()
+            return redirect(url_for('user_requests'))
+
+        # 生成用户ID
+        user_id = generate_next_user_id()
+
+        # 创建用户
+        cur.execute("""
+            INSERT INTO users (user_id, username, password, realname, permission, email, phone)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (user_id, user_request['username'], user_request['password'],
+              user_request['realname'], user_request['permission'],
+              user_request.get('email', ''), user_request.get('phone', '')))
+
+        # 更新申请状态
+        cur.execute("""
+            UPDATE user_requests 
+            SET status = '已批准', 
+                remark = '已批准 - 用户ID: %s' 
+            WHERE request_id = %s
+        """, (user_id, request_id))
+
+        mysql.connection.commit()
+        cur.close()
+
+        flash(f'已批准用户申请！新用户ID: {user_id}', 'success')
+
+    except Exception as e:
+        flash(f'批准失败: {str(e)}', 'danger')
+
+    return redirect(url_for('user_requests'))
+
+
+@app.route('/user_requests/reject/<int:request_id>', methods=['POST'])
+@admin_required
+def reject_user_request(request_id):
+    """拒绝注册申请"""
+    try:
+        remark = request.form.get('remark', '申请被拒绝')
+
+        cur = mysql.connection.cursor()
+
+        # 检查申请是否存在且未处理
+        cur.execute("SELECT status FROM user_requests WHERE request_id = %s", (request_id,))
+        request_data = cur.fetchone()
+
+        if not request_data:
+            flash('申请不存在', 'danger')
+            cur.close()
+            return redirect(url_for('user_requests'))
+
+        if request_data['status'] != '待审批':
+            flash('该申请已处理', 'warning')
+            cur.close()
+            return redirect(url_for('user_requests'))
+
+        # 更新申请状态
+        cur.execute("""
+            UPDATE user_requests 
+            SET status = '已拒绝', remark = %s 
+            WHERE request_id = %s
+        """, (remark, request_id))
+
+        mysql.connection.commit()
+        cur.close()
+
+        flash('已拒绝用户申请', 'success')
+
+    except Exception as e:
+        flash(f'拒绝失败: {str(e)}', 'danger')
+
+    return redirect(url_for('user_requests'))
+
+
+@app.route('/user_requests/delete/<int:request_id>', methods=['POST'])
+@admin_required
+def delete_user_request(request_id):
+    """删除注册申请"""
+    try:
+        cur = mysql.connection.cursor()
+
+        # 只允许删除已处理（批准或拒绝）的申请
+        cur.execute("SELECT status FROM user_requests WHERE request_id = %s", (request_id,))
+        request_data = cur.fetchone()
+
+        if not request_data:
+            flash('申请不存在', 'danger')
+            cur.close()
+            return redirect(url_for('user_requests'))
+
+        if request_data['status'] == '待审批':
+            flash('不能删除待审批的申请', 'danger')
+            cur.close()
+            return redirect(url_for('user_requests'))
+
+        cur.execute("DELETE FROM user_requests WHERE request_id = %s", (request_id,))
+
+        mysql.connection.commit()
+        cur.close()
+
+        flash('申请记录已删除', 'success')
+
+    except Exception as e:
+        flash(f'删除失败: {str(e)}', 'danger')
+
+    return redirect(url_for('user_requests'))
 
 
 if __name__ == '__main__':
