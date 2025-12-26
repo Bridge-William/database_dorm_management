@@ -1,0 +1,134 @@
+<!-- ========================================
+     文件: templates/dashboard.html
+     说明: 仪表板页面
+     ======================================== -->
+{% extends "base.html" %}
+
+{% block title %}仪表板 - 公寓管理系统{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">系统概览</h2>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card bg-primary text-white">
+            <div class="card-body">
+                <h6 class="card-title">学生总数</h6>
+                <h2>{{ student_count }}</h2>
+                <small>在校学生</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card bg-success text-white">
+            <div class="card-body">
+                <h6 class="card-title">公寓楼</h6>
+                <h2>{{ building_count }}</h2>
+                <small>栋楼宇</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card bg-info text-white">
+            <div class="card-body">
+                <h6 class="card-title">寝室数量</h6>
+                <h2>{{ room_count }}</h2>
+                <small>间寝室</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card bg-warning text-white">
+            <div class="card-body">
+                <h6 class="card-title">本月收费</h6>
+                <h2>¥{{ "%.2f"|format(month_total) }}</h2>
+                <small>{{ month_payment_count }} 笔交易</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">最近交费记录</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>交费编号</th>
+                                <th>学生</th>
+                                <th>寝室</th>
+                                <th>类型</th>
+                                <th>金额</th>
+                                <th>日期</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for payment in recent_payments %}
+                            <tr>
+                                <td>{{ payment.payment_id }}</td>
+                                <td>{{ payment.student_name }}</td>
+                                <td>{{ payment.building_id }}-{{ payment.room_id }}</td>
+                                <td>
+                                    <span class="badge bg-{% if payment.payment_type == '住宿费' %}primary{% elif payment.payment_type == '水电费' %}info{% else %}secondary{% endif %}">
+                                        {{ payment.payment_type }}
+                                    </span>
+                                </td>
+                                <td>¥{{ "%.2f"|format(payment.amount) }}</td>
+                                <td>{{ payment.payment_date }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">月度统计</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="monthlyChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ctx = document.getElementById('monthlyChart').getContext('2d');
+const monthlyData = {{ monthly_stats|tojson }};
+
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: monthlyData.map(d => d.month),
+        datasets: [{
+            label: '交费金额',
+            data: monthlyData.map(d => d.total),
+            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { display: false }
+        },
+        scales: {
+            y: { beginAtZero: true }
+        }
+    }
+});
+</script>
+{% endblock %}

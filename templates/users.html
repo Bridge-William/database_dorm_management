@@ -1,0 +1,744 @@
+<!--
+  文件名: templates/users.html
+  说明: 用户管理页面 - 完整代码（仅管理员可访问）
+-->
+{% extends "base.html" %}
+
+{% block title %}用户管理 - 学生公寓管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-person-gear"></i> 用户管理</h2>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+        <i class="bi bi-plus-lg"></i> 添加用户
+    </button>
+</div>
+
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i>
+    <strong>提示：</strong>此页面仅管理员可访问。当前共有 <strong>{{ users|length }}</strong> 个系统用户。
+    下一个可用的用户ID为: <strong>{{ next_user_id }}</strong>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th width="15%">用户ID</th>
+                        <th width="15%">用户名</th>
+                        <th width="15%">真实姓名</th>
+                        <th width="12%">权限</th>
+                        <th width="18%">创建时间</th>
+                        <th width="18%">最后更新</th>
+                        <th width="10%">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr {% if user.user_id == session.user_id %}class="table-primary"{% endif %}>
+                        <td>
+                            <strong class="text-primary">{{ user.user_id }}</strong>
+                            {% if user.user_id == session.user_id %}
+                            <span class="badge bg-info ms-1">当前</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <i class="bi bi-person-circle"></i>
+                            <strong>{{ user.username }}</strong>
+                        </td>
+                        <td>{{ user.realname }}</td>
+                        <td>
+                            <span class="badge bg-{% if user.permission == '管理员' %}danger{% else %}info{% endif %} px-3 py-2">
+                                {% if user.permission == '管理员' %}
+                                <i class="bi bi-shield-check"></i>
+                                {% else %}
+                                <i class="bi bi-person"></i>
+                                {% endif %}
+                                {{ user.permission }}
+                            </span>
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                {% if user.created_at %}
+                                {{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </small>
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                {% if user.updated_at %}
+                                {{ user.updated_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </small>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button class="btn btn-outline-primary"
+                                        onclick="editUser('{{ user.user_id }}', '{{ user.username }}', '{{ user.realname }}', '{{ user.permission }}')"
+                                        title="编辑">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                {% if user.user_id != session.user_id %}
+                                <button class="btn btn-outline-danger"
+                                        onclick="confirmDeleteUser('{{ user.user_id }}', '{{ user.username }}', '{{ user.realname }}')"
+                                        title="删除">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                                {% else %}
+                                <button class="btn btn-outline-secondary" disabled title="不能删除自己">
+                                    <i class="bi bi-lock"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 权限说明 -->
+<div class="card mt-3">
+    <div class="card-header bg-light">
+        <h6 class="mb-0"><i class="bi bi-question-circle"></i> 权限说明</h6>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h6 class="text-danger"><i class="bi bi-shield-check"></i> 管理员权限</h6>
+                <ul class="small">
+                    <li>完全访问所有功能模块</li>
+                    <li>可以管理系统用户</li>
+                    <li>可以删除交费记录</li>
+                    <li>可以修改所有数据</li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <h6 class="text-info"><i class="bi bi-person"></i> 教师权限</h6>
+                <ul class="small">
+                    <li>可以查看和管理学生信息</li>
+                    <li>可以登记和查询交费记录</li>
+                    <li>可以查看统计报表</li>
+                    <li>不能管理系统用户</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加用户模态框 -->
+<div class="modal fade" id="addUserModal" tabindex="-1" aria-labelledby="addUserModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="addUserModalLabel">
+                    <i class="bi bi-person-plus"></i> 添加系统用户
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_user') }}" onsubmit="return validateAddUserForm(this)">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        系统将自动生成用户ID: <strong>{{ next_user_id }}</strong>
+                        <br><small>用户ID格式: U + 年月(4位) + 4位顺序号</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="addUsername" class="form-label">
+                            用户名 <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="addUsername" name="username"
+                               required pattern="[a-zA-Z0-9_]{4,20}"
+                               placeholder="4-20位字母、数字或下划线">
+                        <div class="form-text">用户名用于显示，创建后不可修改</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="addRealname" class="form-label">
+                            真实姓名 <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="addRealname" name="realname"
+                               required maxlength="50" placeholder="请输入真实姓名">
+                    </div>
+                    <div class="mb-3">
+                        <label for="addPassword" class="form-label">
+                            密码 <span class="text-danger">*</span>
+                        </label>
+                        <input type="password" class="form-control" id="addPassword" name="password"
+                               required minlength="6" placeholder="至少6位字符">
+                        <div class="form-text">建议使用字母、数字和特殊字符的组合</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="addPasswordConfirm" class="form-label">
+                            确认密码 <span class="text-danger">*</span>
+                        </label>
+                        <input type="password" class="form-control" id="addPasswordConfirm"
+                               required minlength="6" placeholder="再次输入密码">
+                    </div>
+                    <div class="mb-3">
+                        <label for="addPermission" class="form-label">
+                            权限级别 <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="addPermission" name="permission" required>
+                            <option value="教师" selected>教师</option>
+                            <option value="管理员">管理员</option>
+                        </select>
+                        <div class="form-text text-warning">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            请谨慎分配管理员权限
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> 取消
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle"></i> 添加
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑用户模态框 -->
+<div class="modal fade" id="editUserModal" tabindex="-1" aria-labelledby="editUserModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editUserModalLabel">
+                    <i class="bi bi-pencil-square"></i> 编辑用户信息
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" id="editUserForm" onsubmit="return validateEditUserForm(this)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="editUserId" class="form-label">用户ID</label>
+                        <input type="text" class="form-control" id="editUserId" disabled>
+                        <div class="form-text">用户ID不可修改</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editUsername" class="form-label">用户名</label>
+                        <input type="text" class="form-control" id="editUsername" disabled>
+                        <div class="form-text">用户名不可修改</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editRealname" class="form-label">
+                            真实姓名 <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="editRealname" name="realname"
+                               required maxlength="50">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editPassword" class="form-label">新密码</label>
+                        <input type="password" class="form-control" id="editPassword" name="password"
+                               minlength="6" placeholder="留空则不修改密码">
+                        <div class="form-text">只有需要修改密码时才填写</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editPasswordConfirm" class="form-label">确认新密码</label>
+                        <input type="password" class="form-control" id="editPasswordConfirm"
+                               minlength="6" placeholder="再次输入新密码">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editPermission" class="form-label">
+                            权限级别 <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="editPermission" name="permission" required>
+                            <option value="教师">教师</option>
+                            <option value="管理员">管理员</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> 取消
+                    </button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-check-circle"></i> 保存修改
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 验证添加用户表单
+function validateAddUserForm(form) {
+    const username = form.querySelector('[name="username"]').value;
+    const password = form.querySelector('#addPassword').value;
+    const confirm = form.querySelector('#addPasswordConfirm').value;
+
+    // 验证用户名格式
+    if (!/^[a-zA-Z0-9_]{4,20}$/.test(username)) {
+        alert('用户名必须是4-20位字母、数字或下划线');
+        return false;
+    }
+
+    // 验证密码长度
+    if (password.length < 6) {
+        alert('密码长度至少6位');
+        return false;
+    }
+
+    // 验证密码一致性
+    if (password !== confirm) {
+        alert('两次输入的密码不一致，请重新输入');
+        return false;
+    }
+
+    // 密码强度提示
+    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+        if (!confirm('密码强度较弱，建议使用8位以上包含字母和数字的组合。是否继续？')) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// 验证编辑用户表单
+function validateEditUserForm(form) {
+    const password = form.querySelector('#editPassword').value;
+    const confirm = form.querySelector('#editPasswordConfirm').value;
+
+    // 如果填写了新密码
+    if (password || confirm) {
+        // 验证密码长度
+        if (password.length < 6) {
+            alert('密码长度至少6位');
+            return false;
+        }
+
+        // 验证密码一致性
+        if (password !== confirm) {
+            alert('两次输入的密码不一致，请重新输入');
+            return false;
+        }
+
+        // 密码强度提示
+        if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+            if (!confirm('密码强度较弱，建议使用8位以上包含字母和数字的组合。是否继续？')) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+// 编辑用户
+function editUser(id, username, realname, permission) {
+    document.getElementById('editUserId').value = id;
+    document.getElementById('editUsername').value = username;
+    document.getElementById('editRealname').value = realname;
+    document.getElementById('editPermission').value = permission;
+    document.getElementById('editPassword').value = '';
+    document.getElementById('editPasswordConfirm').value = '';
+    document.getElementById('editUserForm').action = `/users/edit/${id}`;
+
+    const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
+    modal.show();
+}
+
+// 确认删除用户
+function confirmDeleteUser(id, username, realname) {
+    const message = `确定要删除以下用户吗？\n\n` +
+                   `用户ID: ${id}\n` +
+                   `用户名: ${username}\n` +
+                   `姓名: ${realname}\n\n` +
+                   `⚠️ 警告：此操作不可恢复！`;
+
+    if (confirm(message)) {
+        // 二次确认
+        if (confirm('请再次确认是否删除该用户？')) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `/users/delete/${id}`;
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+}
+</script>
+{% endblock %}
+
+
+<!--&lt;!&ndash;-->
+<!--  文件名: templates/users.html-->
+<!--  说明: 用户管理页面 - 完整代码（仅管理员可访问）-->
+<!--&ndash;&gt;-->
+<!--{% extends "base.html" %}-->
+
+<!--{% block title %}用户管理 - 学生公寓管理系统{% endblock %}-->
+
+<!--{% block content %}-->
+<!--<div class="d-flex justify-content-between align-items-center mb-4">-->
+<!--    <h2><i class="bi bi-person-gear"></i> 用户管理</h2>-->
+<!--    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">-->
+<!--        <i class="bi bi-plus-lg"></i> 添加用户-->
+<!--    </button>-->
+<!--</div>-->
+
+<!--<div class="alert alert-info">-->
+<!--    <i class="bi bi-info-circle"></i>-->
+<!--    <strong>提示：</strong>此页面仅管理员可访问。当前共有 <strong>{{ users|length }}</strong> 个系统用户。-->
+<!--</div>-->
+
+<!--<div class="card shadow-sm">-->
+<!--    <div class="card-body">-->
+<!--        <div class="table-responsive">-->
+<!--            <table class="table table-hover align-middle">-->
+<!--                <thead class="table-light">-->
+<!--                    <tr>-->
+<!--                        <th width="8%">用户ID</th>-->
+<!--                        <th width="15%">用户名</th>-->
+<!--                        <th width="15%">真实姓名</th>-->
+<!--                        <th width="12%">权限</th>-->
+<!--                        <th width="20%">创建时间</th>-->
+<!--                        <th width="20%">最后更新</th>-->
+<!--                        <th width="10%">操作</th>-->
+<!--                    </tr>-->
+<!--                </thead>-->
+<!--                <tbody>-->
+<!--                    {% for user in users %}-->
+<!--                    <tr {% if user.user_id == session.user_id %}class="table-primary"{% endif %}>-->
+<!--                        <td class="text-center">-->
+<!--                            <strong>{{ user.user_id }}</strong>-->
+<!--                        </td>-->
+<!--                        <td>-->
+<!--                            <i class="bi bi-person-circle"></i>-->
+<!--                            <strong>{{ user.username }}</strong>-->
+<!--                            {% if user.user_id == session.user_id %}-->
+<!--                            <span class="badge bg-info ms-1">当前</span>-->
+<!--                            {% endif %}-->
+<!--                        </td>-->
+<!--                        <td>{{ user.realname }}</td>-->
+<!--                        <td>-->
+<!--                            <span class="badge bg-{% if user.permission == '管理员' %}danger{% else %}info{% endif %} px-3 py-2">-->
+<!--                                {% if user.permission == '管理员' %}-->
+<!--                                <i class="bi bi-shield-check"></i>-->
+<!--                                {% else %}-->
+<!--                                <i class="bi bi-person"></i>-->
+<!--                                {% endif %}-->
+<!--                                {{ user.permission }}-->
+<!--                            </span>-->
+<!--                        </td>-->
+<!--                        <td>-->
+<!--                            <small class="text-muted">-->
+<!--                                {% if user.created_at %}-->
+<!--                                {{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') }}-->
+<!--                                {% else %}-->
+<!--                                - -->
+<!--                                {% endif %}-->
+<!--                            </small>-->
+<!--                        </td>-->
+<!--                        <td>-->
+<!--                            <small class="text-muted">-->
+<!--                                {% if user.updated_at %}-->
+<!--                                {{ user.updated_at.strftime('%Y-%m-%d %H:%M:%S') }}-->
+<!--                                {% else %}-->
+<!--                                - -->
+<!--                                {% endif %}-->
+<!--                            </small>-->
+<!--                        </td>-->
+<!--                        <td>-->
+<!--                            <div class="btn-group btn-group-sm" role="group">-->
+<!--                                <button class="btn btn-outline-primary"-->
+<!--                                        onclick="editUser({{ user.user_id }}, '{{ user.username }}', '{{ user.realname }}', '{{ user.permission }}')"-->
+<!--                                        title="编辑">-->
+<!--                                    <i class="bi bi-pencil"></i>-->
+<!--                                </button>-->
+<!--                                {% if user.user_id != session.user_id %}-->
+<!--                                <button class="btn btn-outline-danger"-->
+<!--                                        onclick="confirmDeleteUser({{ user.user_id }}, '{{ user.username }}', '{{ user.realname }}')"-->
+<!--                                        title="删除">-->
+<!--                                    <i class="bi bi-trash"></i>-->
+<!--                                </button>-->
+<!--                                {% else %}-->
+<!--                                <button class="btn btn-outline-secondary" disabled title="不能删除自己">-->
+<!--                                    <i class="bi bi-lock"></i>-->
+<!--                                </button>-->
+<!--                                {% endif %}-->
+<!--                            </div>-->
+<!--                        </td>-->
+<!--                    </tr>-->
+<!--                    {% endfor %}-->
+<!--                </tbody>-->
+<!--            </table>-->
+<!--        </div>-->
+<!--    </div>-->
+<!--</div>-->
+
+<!--&lt;!&ndash; 权限说明 &ndash;&gt;-->
+<!--<div class="card mt-3">-->
+<!--    <div class="card-header bg-light">-->
+<!--        <h6 class="mb-0"><i class="bi bi-question-circle"></i> 权限说明</h6>-->
+<!--    </div>-->
+<!--    <div class="card-body">-->
+<!--        <div class="row">-->
+<!--            <div class="col-md-6">-->
+<!--                <h6 class="text-danger"><i class="bi bi-shield-check"></i> 管理员权限</h6>-->
+<!--                <ul class="small">-->
+<!--                    <li>完全访问所有功能模块</li>-->
+<!--                    <li>可以管理系统用户</li>-->
+<!--                    <li>可以删除交费记录</li>-->
+<!--                    <li>可以修改所有数据</li>-->
+<!--                </ul>-->
+<!--            </div>-->
+<!--            <div class="col-md-6">-->
+<!--                <h6 class="text-info"><i class="bi bi-person"></i> 教师权限</h6>-->
+<!--                <ul class="small">-->
+<!--                    <li>可以查看和管理学生信息</li>-->
+<!--                    <li>可以登记和查询交费记录</li>-->
+<!--                    <li>可以查看统计报表</li>-->
+<!--                    <li>不能管理系统用户</li>-->
+<!--                </ul>-->
+<!--            </div>-->
+<!--        </div>-->
+<!--    </div>-->
+<!--</div>-->
+
+<!--&lt;!&ndash; 添加用户模态框 &ndash;&gt;-->
+<!--<div class="modal fade" id="addUserModal" tabindex="-1" aria-labelledby="addUserModalLabel" aria-hidden="true">-->
+<!--    <div class="modal-dialog">-->
+<!--        <div class="modal-content">-->
+<!--            <div class="modal-header bg-primary text-white">-->
+<!--                <h5 class="modal-title" id="addUserModalLabel">-->
+<!--                    <i class="bi bi-person-plus"></i> 添加系统用户-->
+<!--                </h5>-->
+<!--                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>-->
+<!--            </div>-->
+<!--            <form method="POST" action="{{ url_for('add_user') }}" onsubmit="return validateAddUserForm(this)">-->
+<!--                <div class="modal-body">-->
+<!--                    <div class="mb-3">-->
+<!--                        <label for="addUsername" class="form-label">-->
+<!--                            用户名 <span class="text-danger">*</span>-->
+<!--                        </label>-->
+<!--                        <input type="text" class="form-control" id="addUsername" name="username"-->
+<!--                               required pattern="[a-zA-Z0-9_]{4,20}"-->
+<!--                               placeholder="4-20位字母、数字或下划线">-->
+<!--                        <div class="form-text">用户名用于登录，创建后不可修改</div>-->
+<!--                    </div>-->
+<!--                    <div class="mb-3">-->
+<!--                        <label for="addRealname" class="form-label">-->
+<!--                            真实姓名 <span class="text-danger">*</span>-->
+<!--                        </label>-->
+<!--                        <input type="text" class="form-control" id="addRealname" name="realname"-->
+<!--                               required maxlength="50" placeholder="请输入真实姓名">-->
+<!--                    </div>-->
+<!--                    <div class="mb-3">-->
+<!--                        <label for="addPassword" class="form-label">-->
+<!--                            密码 <span class="text-danger">*</span>-->
+<!--                        </label>-->
+<!--                        <input type="password" class="form-control" id="addPassword" name="password"-->
+<!--                               required minlength="6" placeholder="至少6位字符">-->
+<!--                        <div class="form-text">建议使用字母、数字和特殊字符的组合</div>-->
+<!--                    </div>-->
+<!--                    <div class="mb-3">-->
+<!--                        <label for="addPasswordConfirm" class="form-label">-->
+<!--                            确认密码 <span class="text-danger">*</span>-->
+<!--                        </label>-->
+<!--                        <input type="password" class="form-control" id="addPasswordConfirm"-->
+<!--                               required minlength="6" placeholder="再次输入密码">-->
+<!--                    </div>-->
+<!--                    <div class="mb-3">-->
+<!--                        <label for="addPermission" class="form-label">-->
+<!--                            权限级别 <span class="text-danger">*</span>-->
+<!--                        </label>-->
+<!--                        <select class="form-select" id="addPermission" name="permission" required>-->
+<!--                            <option value="教师" selected>教师</option>-->
+<!--                            <option value="管理员">管理员</option>-->
+<!--                        </select>-->
+<!--                        <div class="form-text text-warning">-->
+<!--                            <i class="bi bi-exclamation-triangle"></i>-->
+<!--                            请谨慎分配管理员权限-->
+<!--                        </div>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--                <div class="modal-footer">-->
+<!--                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">-->
+<!--                        <i class="bi bi-x-circle"></i> 取消-->
+<!--                    </button>-->
+<!--                    <button type="submit" class="btn btn-primary">-->
+<!--                        <i class="bi bi-check-circle"></i> 添加-->
+<!--                    </button>-->
+<!--                </div>-->
+<!--            </form>-->
+<!--        </div>-->
+<!--    </div>-->
+<!--</div>-->
+
+<!--&lt;!&ndash; 编辑用户模态框 &ndash;&gt;-->
+<!--<div class="modal fade" id="editUserModal" tabindex="-1" aria-labelledby="editUserModalLabel" aria-hidden="true">-->
+<!--    <div class="modal-dialog">-->
+<!--        <div class="modal-content">-->
+<!--            <div class="modal-header bg-warning">-->
+<!--                <h5 class="modal-title" id="editUserModalLabel">-->
+<!--                    <i class="bi bi-pencil-square"></i> 编辑用户信息-->
+<!--                </h5>-->
+<!--                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>-->
+<!--            </div>-->
+<!--            <form method="POST" id="editUserForm" onsubmit="return validateEditUserForm(this)">-->
+<!--                <div class="modal-body">-->
+<!--                    <div class="mb-3">-->
+<!--                        <label for="editUsername" class="form-label">用户名</label>-->
+<!--                        <input type="text" class="form-control" id="editUsername" disabled>-->
+<!--                        <div class="form-text">用户名不可修改</div>-->
+<!--                    </div>-->
+<!--                    <div class="mb-3">-->
+<!--                        <label for="editRealname" class="form-label">-->
+<!--                            真实姓名 <span class="text-danger">*</span>-->
+<!--                        </label>-->
+<!--                        <input type="text" class="form-control" id="editRealname" name="realname"-->
+<!--                               required maxlength="50">-->
+<!--                    </div>-->
+<!--                    <div class="mb-3">-->
+<!--                        <label for="editPassword" class="form-label">新密码</label>-->
+<!--                        <input type="password" class="form-control" id="editPassword" name="password"-->
+<!--                               minlength="6" placeholder="留空则不修改密码">-->
+<!--                        <div class="form-text">只有需要修改密码时才填写</div>-->
+<!--                    </div>-->
+<!--                    <div class="mb-3">-->
+<!--                        <label for="editPasswordConfirm" class="form-label">确认新密码</label>-->
+<!--                        <input type="password" class="form-control" id="editPasswordConfirm"-->
+<!--                               minlength="6" placeholder="再次输入新密码">-->
+<!--                    </div>-->
+<!--                    <div class="mb-3">-->
+<!--                        <label for="editPermission" class="form-label">-->
+<!--                            权限级别 <span class="text-danger">*</span>-->
+<!--                        </label>-->
+<!--                        <select class="form-select" id="editPermission" name="permission" required>-->
+<!--                            <option value="教师">教师</option>-->
+<!--                            <option value="管理员">管理员</option>-->
+<!--                        </select>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--                <div class="modal-footer">-->
+<!--                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">-->
+<!--                        <i class="bi bi-x-circle"></i> 取消-->
+<!--                    </button>-->
+<!--                    <button type="submit" class="btn btn-warning">-->
+<!--                        <i class="bi bi-check-circle"></i> 保存修改-->
+<!--                    </button>-->
+<!--                </div>-->
+<!--            </form>-->
+<!--        </div>-->
+<!--    </div>-->
+<!--</div>-->
+
+<!--{% endblock %}-->
+
+<!--{% block extra_js %}-->
+<!--<script>-->
+<!--// 验证添加用户表单-->
+<!--function validateAddUserForm(form) {-->
+<!--    const username = form.querySelector('[name="username"]').value;-->
+<!--    const password = form.querySelector('#addPassword').value;-->
+<!--    const confirm = form.querySelector('#addPasswordConfirm').value;-->
+
+<!--    // 验证用户名格式-->
+<!--    if (!/^[a-zA-Z0-9_]{4,20}$/.test(username)) {-->
+<!--        alert('用户名必须是4-20位字母、数字或下划线');-->
+<!--        return false;-->
+<!--    }-->
+
+<!--    // 验证密码长度-->
+<!--    if (password.length < 6) {-->
+<!--        alert('密码长度至少6位');-->
+<!--        return false;-->
+<!--    }-->
+
+<!--    // 验证密码一致性-->
+<!--    if (password !== confirm) {-->
+<!--        alert('两次输入的密码不一致，请重新输入');-->
+<!--        return false;-->
+<!--    }-->
+
+<!--    // 密码强度提示-->
+<!--    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {-->
+<!--        if (!confirm('密码强度较弱，建议使用8位以上包含字母和数字的组合。是否继续？')) {-->
+<!--            return false;-->
+<!--        }-->
+<!--    }-->
+
+<!--    return true;-->
+<!--}-->
+
+<!--// 验证编辑用户表单-->
+<!--function validateEditUserForm(form) {-->
+<!--    const password = form.querySelector('#editPassword').value;-->
+<!--    const confirm = form.querySelector('#editPasswordConfirm').value;-->
+
+<!--    // 如果填写了新密码-->
+<!--    if (password || confirm) {-->
+<!--        // 验证密码长度-->
+<!--        if (password.length < 6) {-->
+<!--            alert('密码长度至少6位');-->
+<!--            return false;-->
+<!--        }-->
+
+<!--        // 验证密码一致性-->
+<!--        if (password !== confirm) {-->
+<!--            alert('两次输入的密码不一致，请重新输入');-->
+<!--            return false;-->
+<!--        }-->
+
+<!--        // 密码强度提示-->
+<!--        if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {-->
+<!--            if (!confirm('密码强度较弱，建议使用8位以上包含字母和数字的组合。是否继续？')) {-->
+<!--                return false;-->
+<!--            }-->
+<!--        }-->
+<!--    }-->
+
+<!--    return true;-->
+<!--}-->
+
+<!--// 编辑用户-->
+<!--function editUser(id, username, realname, permission) {-->
+<!--    document.getElementById('editUsername').value = username;-->
+<!--    document.getElementById('editRealname').value = realname;-->
+<!--    document.getElementById('editPermission').value = permission;-->
+<!--    document.getElementById('editPassword').value = '';-->
+<!--    document.getElementById('editPasswordConfirm').value = '';-->
+<!--    document.getElementById('editUserForm').action = `/users/edit/${id}`;-->
+
+<!--    const modal = new bootstrap.Modal(document.getElementById('editUserModal'));-->
+<!--    modal.show();-->
+<!--}-->
+
+<!--// 确认删除用户-->
+<!--function confirmDeleteUser(id, username, realname) {-->
+<!--    const message = `确定要删除以下用户吗？\n\n` +-->
+<!--                   `用户名: ${username}\n` +-->
+<!--                   `姓名: ${realname}\n\n` +-->
+<!--                   `⚠️ 警告：此操作不可恢复！`;-->
+
+<!--    if (confirm(message)) {-->
+<!--        // 二次确认-->
+<!--        if (confirm('请再次确认是否删除该用户？')) {-->
+<!--            const form = document.createElement('form');-->
+<!--            form.method = 'POST';-->
+<!--            form.action = `/users/delete/${id}`;-->
+<!--            document.body.appendChild(form);-->
+<!--            form.submit();-->
+<!--        }-->
+<!--    }-->
+<!--}-->
+<!--</script>-->
+<!--{% endblock %}-->

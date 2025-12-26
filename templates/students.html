@@ -1,0 +1,523 @@
+<!--
+  文件名: templates/students.html
+  说明: 学生管理页面 - 完整代码
+  功能: 学生信息CRUD、搜索、分页、寝室分配
+-->
+{% extends "base.html" %}
+
+{% block title %}学生管理 - 学生公寓管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-people"></i> 学生管理</h2>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStudentModal">
+        <i class="bi bi-plus-lg"></i> 添加学生
+    </button>
+</div>
+
+<!-- 搜索栏 -->
+<div class="card mb-3 shadow-sm">
+    <div class="card-header bg-light">
+        <h6 class="mb-0"><i class="bi bi-search"></i> 搜索学生</h6>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('students') }}" class="row g-3">
+            <div class="col-md-10">
+                <input type="text" class="form-control" name="search"
+                       placeholder="搜索学号、姓名、专业或班级..." value="{{ search }}"
+                       autocomplete="off">
+            </div>
+            <div class="col-md-2">
+                <div class="btn-group w-100" role="group">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-search"></i> 搜索
+                    </button>
+                    {% if search %}
+                    <a href="{{ url_for('students') }}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-clockwise"></i> 重置
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 统计信息 -->
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card bg-info text-white shadow-sm">
+            <div class="card-body text-center">
+                <i class="bi bi-people" style="font-size: 1.5rem;"></i>
+                <h6 class="mt-2">学生总数</h6>
+                <h4>{{ students|length }}</h4>
+            </div>
+        </div>
+    </div>
+    {% if search %}
+    <div class="col-md-3">
+        <div class="card bg-warning text-white shadow-sm">
+            <div class="card-body text-center">
+                <i class="bi bi-search" style="font-size: 1.5rem;"></i>
+                <h6 class="mt-2">搜索结果</h6>
+                <h4>{{ students|length }}</h4>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 学生列表 -->
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th width="8%">学号</th>
+                        <th width="8%">姓名</th>
+                        <th width="5%">性别</th>
+                        <th width="8%">民族</th>
+                        <th width="12%">专业</th>
+                        <th width="10%">班级</th>
+                        <th width="12%">联系方式</th>
+                        <th width="8%">公寓楼</th>
+                        <th width="8%">寝室</th>
+                        <th width="12%">交费情况</th>
+                        <th width="9%">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in students %}
+                    <tr>
+                        <td>
+                            <strong class="text-primary">{{ student.student_id }}</strong>
+                        </td>
+                        <td>
+                            <strong>{{ student.name }}</strong>
+                        </td>
+                        <td>
+                            <span class="badge bg-{% if student.gender == '男' %}primary{% else %}danger{% endif %}">
+                                {{ student.gender }}
+                            </span>
+                        </td>
+                        <td><small>{{ student.ethnicity }}</small></td>
+                        <td><small>{{ student.major }}</small></td>
+                        <td><small>{{ student.class }}</small></td>
+                        <td>
+                            <small>
+                                <i class="bi bi-telephone"></i> {{ student.phone }}
+                            </small>
+                        </td>
+                        <td>
+                            {% if student.building_id %}
+                            <span class="badge bg-secondary">{{ student.building_id }}</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if student.room_id %}
+                            <span class="badge bg-info">{{ student.room_id }}</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if student.payment_count > 0 %}
+                            <small>
+                                <span class="badge bg-success">{{ student.payment_count }}笔</span>
+                                ¥{{ "%.2f"|format(student.total_paid or 0) }}
+                            </small>
+                            {% else %}
+                            <small class="text-muted">未交费</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button class="btn btn-outline-primary"
+                                        onclick="editStudent('{{ student.student_id }}', '{{ student.name }}', '{{ student.gender }}', '{{ student.ethnicity }}', '{{ student.major }}', '{{ student.class }}', '{{ student.phone }}', '{{ student.building_id or '' }}', '{{ student.room_id or '' }}')"
+                                        title="编辑"
+                                        data-bs-toggle="tooltip">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-danger"
+                                        onclick="confirmDelete('{{ student.student_id }}', '{{ student.name }}')"
+                                        title="删除"
+                                        data-bs-toggle="tooltip">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="11" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                            <p class="mt-2">
+                                {% if search %}
+                                未找到符合条件的学生
+                                {% else %}
+                                暂无学生信息，请点击"添加学生"按钮添加
+                                {% endif %}
+                            </p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 分页 -->
+        {% if total_pages > 1 %}
+        <nav aria-label="分页导航">
+            <ul class="pagination justify-content-center mt-4">
+                <!-- 上一页 -->
+                <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                    <a class="page-link" href="?page={{ page-1 }}&search={{ search }}">
+                        <i class="bi bi-chevron-left"></i> 上一页
+                    </a>
+                </li>
+
+                <!-- 页码 -->
+                {% for p in range(1, total_pages + 1) %}
+                    {% if p == page %}
+                    <!-- 当前页 -->
+                    <li class="page-item active">
+                        <span class="page-link">
+                            {{ p }}
+                            <span class="visually-hidden">(当前)</span>
+                        </span>
+                    </li>
+                    {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
+                    <!-- 显示的页码 -->
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ p }}&search={{ search }}">{{ p }}</a>
+                    </li>
+                    {% elif p == 4 or p == total_pages - 3 %}
+                    <!-- 省略号 -->
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+
+                <!-- 下一页 -->
+                <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                    <a class="page-link" href="?page={{ page+1 }}&search={{ search }}">
+                        下一页 <i class="bi bi-chevron-right"></i>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 添加学生模态框 -->
+<div class="modal fade" id="addStudentModal" tabindex="-1" aria-labelledby="addStudentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="addStudentModalLabel">
+                    <i class="bi bi-person-plus"></i> 添加学生
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_student') }}" onsubmit="return validateStudentForm(this)">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="addStudentId" class="form-label">
+                                学号 <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="addStudentId" name="student_id"
+                                   required pattern="[0-9]{7,20}"
+                                   placeholder="例如: 2024001"
+                                   title="请输入7-20位数字">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="addName" class="form-label">
+                                姓名 <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="addName" name="name"
+                                   required maxlength="50" placeholder="请输入真实姓名">
+                        </div>
+
+                        <div class="col-md-3">
+                            <label for="addGender" class="form-label">
+                                性别 <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="addGender" name="gender" required>
+                                <option value="">请选择</option>
+                                <option value="男">男</option>
+                                <option value="女">女</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="addEthnicity" class="form-label">民族</label>
+                            <input type="text" class="form-control" id="addEthnicity" name="ethnicity"
+                                   value="汉族" maxlength="20">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="addPhone" class="form-label">
+                                联系方式 <span class="text-danger">*</span>
+                            </label>
+                            <input type="tel" class="form-control" id="addPhone" name="phone"
+                                   required pattern="1[3-9][0-9]{9}"
+                                   placeholder="请输入11位手机号"
+                                   title="请输入正确的手机号">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="addMajor" class="form-label">
+                                专业 <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="addMajor" name="major"
+                                   required maxlength="50" placeholder="例如: 计算机科学与技术">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="addClass" class="form-label">
+                                班级 <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="addClass" name="class"
+                                   required maxlength="50" placeholder="例如: 计科2401">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="addBuildingSelect" class="form-label">公寓楼</label>
+                            <select class="form-select" id="addBuildingSelect" name="building_id"
+                                    onchange="loadRooms(this.value, 'addRoomSelect')">
+                                <option value="">-- 请选择 --</option>
+                                {% for building in buildings %}
+                                <option value="{{ building.building_id }}">{{ building.building_id }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">选填，不选则不分配寝室</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="addRoomSelect" class="form-label">寝室</label>
+                            <select class="form-select" id="addRoomSelect" name="room_id">
+                                <option value="">-- 请先选择公寓楼 --</option>
+                            </select>
+                            <div class="form-text" id="addRoomInfo"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> 取消
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle"></i> 添加
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑学生模态框 -->
+<div class="modal fade" id="editStudentModal" tabindex="-1" aria-labelledby="editStudentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editStudentModalLabel">
+                    <i class="bi bi-pencil-square"></i> 编辑学生信息
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" id="editStudentForm" onsubmit="return validateStudentForm(this)">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="editStudentId" class="form-label">学号</label>
+                            <input type="text" class="form-control" id="editStudentId" disabled>
+                            <div class="form-text">学号不可修改</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="editName" class="form-label">
+                                姓名 <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="editName" name="name"
+                                   required maxlength="50">
+                        </div>
+
+                        <div class="col-md-3">
+                            <label for="editGender" class="form-label">
+                                性别 <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="editGender" name="gender" required>
+                                <option value="男">男</option>
+                                <option value="女">女</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="editEthnicity" class="form-label">民族</label>
+                            <input type="text" class="form-control" id="editEthnicity" name="ethnicity"
+                                   maxlength="20">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="editPhone" class="form-label">
+                                联系方式 <span class="text-danger">*</span>
+                            </label>
+                            <input type="tel" class="form-control" id="editPhone" name="phone"
+                                   required pattern="1[3-9][0-9]{9}">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="editMajor" class="form-label">
+                                专业 <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="editMajor" name="major"
+                                   required maxlength="50">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="editClass" class="form-label">
+                                班级 <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="editClass" name="class"
+                                   required maxlength="50">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="editBuildingSelect" class="form-label">公寓楼</label>
+                            <select class="form-select" id="editBuildingSelect" name="building_id"
+                                    onchange="loadRooms(this.value, 'editRoomSelect')">
+                                <option value="">-- 请选择 --</option>
+                                {% for building in buildings %}
+                                <option value="{{ building.building_id }}">{{ building.building_id }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="editRoomSelect" class="form-label">寝室</label>
+                            <select class="form-select" id="editRoomSelect" name="room_id">
+                                <option value="">-- 请先选择公寓楼 --</option>
+                            </select>
+                            <div class="form-text" id="editRoomInfo"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> 取消
+                    </button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-check-circle"></i> 保存修改
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 初始化工具提示
+document.addEventListener('DOMContentLoaded', function() {
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+
+// 动态加载房间列表
+function loadRooms(buildingId, selectId) {
+    const select = document.getElementById(selectId);
+    const infoDiv = document.getElementById(selectId === 'addRoomSelect' ? 'addRoomInfo' : 'editRoomInfo');
+
+    select.innerHTML = '<option value="">加载中...</option>';
+    infoDiv.innerHTML = '';
+
+    if (!buildingId) {
+        select.innerHTML = '<option value="">-- 请先选择公寓楼 --</option>';
+        return;
+    }
+
+    // 使用AJAX获取房间列表
+    fetch(`/api/rooms/${encodeURIComponent(buildingId)}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('加载失败');
+            }
+            return response.json();
+        })
+        .then(rooms => {
+            select.innerHTML = '<option value="">-- 请选择 --</option>';
+
+            if (rooms.length === 0) {
+                select.innerHTML += '<option disabled>该楼暂无寝室</option>';
+                infoDiv.innerHTML = '<small class="text-warning">该楼暂无寝室，请先添加寝室</small>';
+            } else {
+                let fullRooms = 0;
+                rooms.forEach(room => {
+                    const option = document.createElement('option');
+                    option.value = room.room_id;
+                    option.textContent = `${room.room_id} (${room.capacity}人间, ¥${room.fee}/学期)`;
+                    select.appendChild(option);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            select.innerHTML = '<option disabled>加载失败</option>';
+            infoDiv.innerHTML = '<small class="text-danger">加载房间列表失败，请刷新重试</small>';
+        });
+}
+
+// 编辑学生
+function editStudent(id, name, gender, ethnicity, major, classname, phone, building, room) {
+    document.getElementById('editStudentId').value = id;
+    document.getElementById('editName').value = name;
+    document.getElementById('editGender').value = gender;
+    document.getElementById('editEthnicity').value = ethnicity || '';
+    document.getElementById('editMajor').value = major;
+    document.getElementById('editClass').value = classname;
+    document.getElementById('editPhone').value = phone;
+    document.getElementById('editBuildingSelect').value = building && building !== 'None' ? building : '';
+
+    document.getElementById('editStudentForm').action = `/students/edit/${encodeURIComponent(id)}`;
+
+    // 如果有建筑，加载其房间
+    if (building && building !== 'None' && building !== '') {
+        loadRooms(building, 'editRoomSelect');
+        // 延迟设置房间值，确保房间列表已加载
+        setTimeout(() => {
+            if (room && room !== 'None') {
+                document.getElementById('editRoomSelect').value = room;
+            }
+        }, 500);
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('editStudentModal'));
+    modal.show();
+}
+
+// 确认删除学生
+function confirmDelete(id, name) {
+    if (confirm(`确定要删除学生 ${name} (学号: ${id}) 吗？\n\n此操作将删除该学生的所有交费记录，且不可恢复！`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/students/delete/${encodeURIComponent(id)}`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// 表单验证
+function validateStudentForm(form) {
+    const phone = form.querySelector('[name="phone"]').value;
+
+    // 验证手机号
+    if (!/^1[3-9][0-9]{9}$/.test(phone)) {
+        alert('请输入正确的手机号码（11位）');
+        return false;
+    }
+
+    return true;
+}
+</script>
+{% endblock %}

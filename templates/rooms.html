@@ -1,0 +1,338 @@
+<!--
+  文件名: templates/rooms.html
+  说明: 寝室管理页面 - 完整代码
+-->
+{% extends "base.html" %}
+
+{% block title %}寝室管理 - 学生公寓管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-door-closed"></i> 寝室管理</h2>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addRoomModal">
+        <i class="bi bi-plus-lg"></i> 添加寝室
+    </button>
+</div>
+
+<!-- 筛选栏 -->
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="GET" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">公寓楼筛选</label>
+                <select class="form-select" name="building" onchange="this.form.submit()">
+                    <option value="">全部公寓楼</option>
+                    {% for building in buildings %}
+                    <option value="{{ building.building_id }}" {% if building_filter == building.building_id %}selected{% endif %}>
+                        {{ building.building_id }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <div class="alert alert-info mb-0 py-2">
+                    <small>
+                        <i class="bi bi-info-circle"></i>
+                        共 <strong>{{ rooms|length }}</strong> 间寝室
+                        {% if building_filter %}（{{ building_filter }}）{% endif %}
+                    </small>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 寝室列表 -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th width="10%">寝室号</th>
+                        <th width="10%">公寓楼</th>
+                        <th width="8%">可住人数</th>
+                        <th width="8%">当前入住</th>
+                        <th width="8%">剩余床位</th>
+                        <th width="10%">住宿费用</th>
+                        <th width="10%">电话</th>
+                        <th width="20%">入住率</th>
+                        <th width="16%">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for room in rooms %}
+                    <tr>
+                        <td><strong class="text-primary">{{ room.room_id }}</strong></td>
+                        <td>
+                            <span class="badge bg-secondary">{{ room.building_id }}</span>
+                        </td>
+                        <td class="text-center">{{ room.capacity }}</td>
+                        <td class="text-center">
+                            <strong>{{ room.current_occupancy }}</strong>
+                        </td>
+                        <td class="text-center">
+                            {% if room.available_beds > 0 %}
+                            <span class="badge bg-success">{{ room.available_beds }}</span>
+                            {% else %}
+                            <span class="badge bg-danger">已满</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong class="text-success">¥{{ "%.2f"|format(room.fee) }}</strong>
+                            <small class="text-muted d-block">/ 学期</small>
+                        </td>
+                        <td>
+                            {% if room.phone %}
+                            <i class="bi bi-telephone"></i> {{ room.phone }}
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% set occupancy_rate = (room.current_occupancy / room.capacity * 100)|int %}
+                            <div class="progress" style="height: 25px;">
+                                <div class="progress-bar {% if occupancy_rate == 100 %}bg-danger{% elif occupancy_rate >= 75 %}bg-warning{% else %}bg-success{% endif %}"
+                                     role="progressbar"
+                                     style="width: {{ occupancy_rate }}%"
+                                     aria-valuenow="{{ occupancy_rate }}"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100">
+                                    <strong>{{ occupancy_rate }}%</strong>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button class="btn btn-outline-primary"
+                                        onclick="editRoom('{{ room.room_id }}', '{{ room.building_id }}', {{ room.capacity }}, {{ room.fee }}, '{{ room.phone or '' }}')"
+                                        title="编辑">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-danger"
+                                        onclick="confirmDeleteRoom('{{ room.room_id }}', {{ room.current_occupancy }})"
+                                        title="删除">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                            <p class="mt-2">暂无寝室信息</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 统计信息 -->
+{% if rooms %}
+<div class="row mt-3 g-3">
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h6 class="text-muted">总房间数</h6>
+                <h3 class="text-primary">{{ rooms|length }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h6 class="text-muted">总床位数</h6>
+                <h3 class="text-info">{{ rooms|sum(attribute='capacity') }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h6 class="text-muted">已入住</h6>
+                <h3 class="text-success">{{ rooms|sum(attribute='current_occupancy') }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h6 class="text-muted">剩余床位</h6>
+                <h3 class="text-warning">{{ rooms|sum(attribute='available_beds') }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 添加寝室模态框 -->
+<div class="modal fade" id="addRoomModal" tabindex="-1" aria-labelledby="addRoomModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="addRoomModalLabel">
+                    <i class="bi bi-door-open"></i> 添加寝室
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_room') }}" onsubmit="return validateRoomForm(this)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="addRoomId" class="form-label">寝室号 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="addRoomId" name="room_id"
+                               required maxlength="20" placeholder="例如: A101, 201">
+                        <div class="form-text">建议格式：楼栋+房间号</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="addRoomBuilding" class="form-label">所属公寓楼 <span class="text-danger">*</span></label>
+                        <select class="form-select" id="addRoomBuilding" name="building_id" required>
+                            <option value="">请选择</option>
+                            {% for building in buildings %}
+                            <option value="{{ building.building_id }}">{{ building.building_id }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="addCapacity" class="form-label">可住人数 <span class="text-danger">*</span></label>
+                        <select class="form-select" id="addCapacity" name="capacity" required>
+                            <option value="2">2人间</option>
+                            <option value="4" selected>4人间</option>
+                            <option value="6">6人间</option>
+                            <option value="8">8人间</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="addFee" class="form-label">住宿费用（元/学期）<span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="addFee" name="fee"
+                               required min="0" step="0.01" value="1200.00">
+                    </div>
+                    <div class="mb-3">
+                        <label for="addPhone" class="form-label">寝室电话</label>
+                        <input type="text" class="form-control" id="addPhone" name="phone"
+                               maxlength="20" placeholder="选填">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> 取消
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle"></i> 添加
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑寝室模态框 -->
+<div class="modal fade" id="editRoomModal" tabindex="-1" aria-labelledby="editRoomModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editRoomModalLabel">
+                    <i class="bi bi-pencil-square"></i> 编辑寝室信息
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" id="editRoomForm" onsubmit="return validateRoomForm(this)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="editRoomId" class="form-label">寝室号</label>
+                        <input type="text" class="form-control" id="editRoomId" disabled>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editRoomBuilding" class="form-label">所属公寓楼 <span class="text-danger">*</span></label>
+                        <select class="form-select" id="editRoomBuilding" name="building_id" required>
+                            {% for building in buildings %}
+                            <option value="{{ building.building_id }}">{{ building.building_id }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editCapacity" class="form-label">可住人数 <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="editCapacity" name="capacity"
+                               required min="1" max="20">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editFee" class="form-label">住宿费用（元/学期）<span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="editFee" name="fee"
+                               required min="0" step="0.01">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editPhone" class="form-label">寝室电话</label>
+                        <input type="text" class="form-control" id="editPhone" name="phone" maxlength="20">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> 取消
+                    </button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-check-circle"></i> 保存修改
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 编辑寝室
+function editRoom(id, building, capacity, fee, phone) {
+    document.getElementById('editRoomId').value = id;
+    document.getElementById('editRoomBuilding').value = building;
+    document.getElementById('editCapacity').value = capacity;
+    document.getElementById('editFee').value = fee;
+    document.getElementById('editPhone').value = phone;
+    document.getElementById('editRoomForm').action = `/rooms/edit/${encodeURIComponent(id)}`;
+
+    const modal = new bootstrap.Modal(document.getElementById('editRoomModal'));
+    modal.show();
+}
+
+// 确认删除寝室
+function confirmDeleteRoom(id, currentOccupancy) {
+    let message = `确定要删除寝室 ${id} 吗？\n\n`;
+
+    if (currentOccupancy > 0) {
+        message += `⚠️ 警告: 该寝室还有 ${currentOccupancy} 名学生入住！\n`;
+    }
+
+    message += `此操作将删除该寝室的所有相关记录，且不可恢复！`;
+
+    if (confirm(message)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/rooms/delete/${encodeURIComponent(id)}`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// 表单验证
+function validateRoomForm(form) {
+    const capacity = parseInt(form.querySelector('[name="capacity"]').value);
+    const fee = parseFloat(form.querySelector('[name="fee"]').value);
+
+    if (capacity < 1 || capacity > 20) {
+        alert('可住人数必须在 1-20 之间');
+        return false;
+    }
+
+    if (fee < 0 || fee > 100000) {
+        alert('住宿费用必须在 0-100000 之间');
+        return false;
+    }
+
+    return true;
+}
+</script>
+{% endblock %}

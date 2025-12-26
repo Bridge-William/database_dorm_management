@@ -1,0 +1,417 @@
+<!--
+  文件名: templates/reports.html
+  说明: 统计报表页面 - 完整代码
+-->
+{% extends "base.html" %}
+
+{% block title %}统计报表 - 学生公寓管理系统{% endblock %}
+
+{% block content %}
+<h2 class="mb-4"><i class="bi bi-graph-up"></i> 统计报表</h2>
+
+<!-- 公寓楼统计 -->
+<div class="card mb-4 shadow-sm">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="bi bi-building"></i> 公寓楼收费统计</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th width="20%">公寓楼</th>
+                        <th width="20%">入住学生数</th>
+                        <th width="20%">交费笔数</th>
+                        <th width="20%">人均交费</th>
+                        <th width="20%">收费总额</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in building_stats %}
+                    <tr>
+                        <td>
+                            <strong class="text-primary">{{ stat.building_id }}</strong>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-info">{{ stat.student_count }} 人</span>
+                        </td>
+                        <td class="text-center">{{ stat.payment_count }} 笔</td>
+                        <td class="text-center">
+                            {% if stat.student_count > 0 %}
+                            ¥{{ "%.2f"|format(stat.total_amount / stat.student_count) }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <strong class="text-success" style="font-size: 1.1em;">
+                                ¥{{ "%.2f"|format(stat.total_amount) }}
+                            </strong>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if building_stats %}
+                    <tr class="table-secondary fw-bold">
+                        <td>合计</td>
+                        <td class="text-center">{{ building_stats|sum(attribute='student_count') }} 人</td>
+                        <td class="text-center">{{ building_stats|sum(attribute='payment_count') }} 笔</td>
+                        <td class="text-center">-</td>
+                        <td class="text-end text-success">
+                            ¥{{ "%.2f"|format(building_stats|sum(attribute='total_amount')) }}
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 专业统计 -->
+<div class="card mb-4 shadow-sm">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0"><i class="bi bi-mortarboard"></i> 专业收费统计</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th width="30%">专业</th>
+                        <th width="15%">学生人数</th>
+                        <th width="15%">交费笔数</th>
+                        <th width="20%">人均交费</th>
+                        <th width="20%">收费总额</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in major_stats %}
+                    <tr>
+                        <td><strong>{{ stat.major }}</strong></td>
+                        <td class="text-center">
+                            <span class="badge bg-primary">{{ stat.student_count }}</span>
+                        </td>
+                        <td class="text-center">{{ stat.payment_count }}</td>
+                        <td class="text-center">
+                            <strong class="text-info">
+                                ¥{{ "%.2f"|format(stat.total_amount / stat.student_count if stat.student_count > 0 else 0) }}
+                            </strong>
+                        </td>
+                        <td class="text-end">
+                            <strong class="text-success">
+                                ¥{{ "%.2f"|format(stat.total_amount) }}
+                            </strong>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if major_stats %}
+                    <tr class="table-secondary fw-bold">
+                        <td>合计</td>
+                        <td class="text-center">{{ major_stats|sum(attribute='student_count') }} 人</td>
+                        <td class="text-center">{{ major_stats|sum(attribute='payment_count') }} 笔</td>
+                        <td class="text-center">-</td>
+                        <td class="text-end text-success">
+                            ¥{{ "%.2f"|format(major_stats|sum(attribute='total_amount')) }}
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 月度统计 -->
+<div class="card mb-4 shadow-sm">
+    <div class="card-header bg-info text-white">
+        <h5 class="mb-0"><i class="bi bi-calendar-month"></i> 月度收费统计与趋势</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-8">
+                <canvas id="monthlyChart" height="80"></canvas>
+            </div>
+            <div class="col-md-4">
+                <h6 class="text-muted mb-3">最近月度明细</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>月份</th>
+                                <th>类型</th>
+                                <th class="text-end">金额</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in monthly_stats[:12] %}
+                            <tr>
+                                <td><small>{{ stat.month }}</small></td>
+                                <td>
+                                    <span class="badge badge-sm bg-{% if stat.payment_type == '住宿费' %}primary{% elif stat.payment_type == '水电费' %}info{% else %}secondary{% endif %}">
+                                        {{ stat.payment_type }}
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <small class="text-success fw-bold">
+                                        ¥{{ "%.0f"|format(stat.total) }}
+                                    </small>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 欠费学生 -->
+<div class="card mb-4 shadow-sm">
+    <div class="card-header bg-warning">
+        <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> 欠费提醒</h5>
+    </div>
+    <div class="card-body">
+        {% if arrears_students %}
+        <div class="alert alert-warning">
+            <i class="bi bi-info-circle"></i>
+            共有 <strong>{{ arrears_students|length }}</strong> 名学生存在欠费情况，请及时催缴
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th width="10%">学号</th>
+                        <th width="10%">姓名</th>
+                        <th width="20%">专业班级</th>
+                        <th width="12%">公寓-寝室</th>
+                        <th width="12%">应交费用</th>
+                        <th width="12%">已交费用</th>
+                        <th width="12%">欠费金额</th>
+                        <th width="12%">欠费状态</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in arrears_students %}
+                    {% set arrears_amount = (student.should_pay or 0) - student.paid_amount %}
+                    <tr>
+                        <td><small>{{ student.student_id }}</small></td>
+                        <td><strong>{{ student.name }}</strong></td>
+                        <td>
+                            <div>{{ student.major }}</div>
+                            <small class="text-muted">{{ student.class }}</small>
+                        </td>
+                        <td>
+                            {% if student.building_id and student.room_id %}
+                            <span class="badge bg-secondary">
+                                {{ student.building_id }}-{{ student.room_id }}
+                            </span>
+                            {% else %}
+                            <span class="text-muted">未分配</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            ¥{{ "%.2f"|format(student.should_pay or 0) }}
+                        </td>
+                        <td class="text-end">
+                            <span class="text-success">
+                                ¥{{ "%.2f"|format(student.paid_amount) }}
+                            </span>
+                        </td>
+                        <td class="text-end">
+                            <strong class="text-danger">
+                                ¥{{ "%.2f"|format(arrears_amount) }}
+                            </strong>
+                        </td>
+                        <td class="text-center">
+                            {% if arrears_amount >= 1000 %}
+                            <span class="badge bg-danger">严重</span>
+                            {% elif arrears_amount >= 500 %}
+                            <span class="badge bg-warning">一般</span>
+                            {% else %}
+                            <span class="badge bg-info">轻微</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-secondary fw-bold">
+                    <tr>
+                        <td colspan="5" class="text-end">欠费总计：</td>
+                        <td colspan="3" class="text-end text-danger" style="font-size: 1.1em;">
+                            ¥{{ "%.2f"|format(arrears_students|sum(attribute='should_pay') - arrears_students|sum(attribute='paid_amount')) }}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-success text-center">
+            <i class="bi bi-check-circle"></i>
+            <strong>太棒了！</strong> 目前没有学生欠费
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 统计汇总卡片 -->
+<div class="row g-3">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white shadow-sm">
+            <div class="card-body text-center">
+                <i class="bi bi-people" style="font-size: 2rem;"></i>
+                <h6 class="mt-2">总学生数</h6>
+                <h3>{{ major_stats|sum(attribute='student_count') }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white shadow-sm">
+            <div class="card-body text-center">
+                <i class="bi bi-cash-stack" style="font-size: 2rem;"></i>
+                <h6 class="mt-2">总收费金额</h6>
+                <h3>¥{{ "%.0f"|format(building_stats|sum(attribute='total_amount')) }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white shadow-sm">
+            <div class="card-body text-center">
+                <i class="bi bi-receipt" style="font-size: 2rem;"></i>
+                <h6 class="mt-2">总交费笔数</h6>
+                <h3>{{ building_stats|sum(attribute='payment_count') }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white shadow-sm">
+            <div class="card-body text-center">
+                <i class="bi bi-exclamation-triangle" style="font-size: 2rem;"></i>
+                <h6 class="mt-2">欠费人数</h6>
+                <h3>{{ arrears_students|length }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 月度统计图表
+const monthlyData = {{ monthly_stats|tojson }};
+
+// 按月份和类型组织数据
+const monthlyByType = {};
+monthlyData.forEach(item => {
+    if (!monthlyByType[item.month]) {
+        monthlyByType[item.month] = {dormitory: 0, utility: 0, other: 0};
+    }
+    if (item.payment_type === '住宿费') {
+        monthlyByType[item.month].dormitory = item.total;
+    } else if (item.payment_type === '水电费') {
+        monthlyByType[item.month].utility = item.total;
+    } else {
+        monthlyByType[item.month].other = item.total;
+    }
+});
+
+// 排序月份并限制显示最近12个月
+const months = Object.keys(monthlyByType).sort().slice(-12);
+const dormitoryData = months.map(m => monthlyByType[m].dormitory);
+const utilityData = months.map(m => monthlyByType[m].utility);
+const otherData = months.map(m => monthlyByType[m].other);
+
+// 创建图表
+const ctx = document.getElementById('monthlyChart');
+if (ctx) {
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [
+                {
+                    label: '住宿费',
+                    data: dormitoryData,
+                    borderColor: 'rgb(54, 162, 235)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                },
+                {
+                    label: '水电费',
+                    data: utilityData,
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                },
+                {
+                    label: '其他',
+                    data: otherData,
+                    borderColor: 'rgb(153, 102, 255)',
+                    backgroundColor: 'rgba(153, 102, 255, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        usePointStyle: true,
+                        padding: 15
+                    }
+                },
+                title: {
+                    display: true,
+                    text: '近12个月收费趋势图',
+                    font: {
+                        size: 16,
+                        weight: 'bold'
+                    }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            label += '¥' + context.parsed.y.toFixed(2);
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '¥' + value.toLocaleString();
+                        }
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    }
+                }
+            },
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
+            }
+        }
+    });
+}
+</script>
+{% endblock %}

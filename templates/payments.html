@@ -1,0 +1,388 @@
+<!--
+  文件名: templates/payments.html
+  说明: 交费管理页面 - 完整代码
+-->
+{% extends "base.html" %}
+
+{% block title %}交费管理 - 学生公寓管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-cash-coin"></i> 交费管理</h2>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPaymentModal">
+        <i class="bi bi-plus-lg"></i> 新增交费记录
+    </button>
+</div>
+
+<!-- 筛选栏 -->
+<div class="card mb-3">
+    <div class="card-header bg-light">
+        <h6 class="mb-0"><i class="bi bi-funnel"></i> 筛选条件</h6>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">学号/姓名</label>
+                <input type="text" class="form-control" name="student_id" value="{{ filters.student_id }}"
+                       placeholder="输入学号或姓名">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">交费类型</label>
+                <select class="form-select" name="payment_type">
+                    <option value="">全部类型</option>
+                    <option value="住宿费" {% if filters.payment_type == '住宿费' %}selected{% endif %}>住宿费</option>
+                    <option value="水电费" {% if filters.payment_type == '水电费' %}selected{% endif %}>水电费</option>
+                    <option value="其他" {% if filters.payment_type == '其他' %}selected{% endif %}>其他</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">开始日期</label>
+                <input type="date" class="form-control" name="start_date" value="{{ filters.start_date }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">结束日期</label>
+                <input type="date" class="form-control" name="end_date" value="{{ filters.end_date }}">
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="bi bi-search"></i> 查询
+                </button>
+                <a href="{{ url_for('payments') }}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-clockwise"></i> 重置
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 统计信息 -->
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="alert alert-info mb-0">
+            <i class="bi bi-info-circle"></i>
+            查询结果：共 <strong>{{ payments|length }}</strong> 条记录
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="alert alert-success mb-0">
+            <i class="bi bi-cash-stack"></i>
+            本页金额：<strong>¥{{ "%.2f"|format(payments|sum(attribute='amount')) }}</strong>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="alert alert-warning mb-0">
+            <i class="bi bi-calculator"></i>
+            总金额：<strong>¥{{ "%.2f"|format(total_amount) }}</strong>
+        </div>
+    </div>
+</div>
+
+<!-- 交费记录列表 -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th width="6%">编号</th>
+                        <th width="10%">学号</th>
+                        <th width="8%">姓名</th>
+                        <th width="15%">专业班级</th>
+                        <th width="10%">公寓-寝室</th>
+                        <th width="8%">交费类型</th>
+                        <th width="10%">金额</th>
+                        <th width="10%">交费日期</th>
+                        <th width="15%">备注</th>
+                        <th width="8%">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for payment in payments %}
+                    <tr>
+                        <td>{{ payment.payment_id }}</td>
+                        <td>
+                            <small class="text-muted">{{ payment.student_id }}</small>
+                        </td>
+                        <td>
+                            <strong>{{ payment.student_name }}</strong>
+                        </td>
+                        <td>
+                            <div>{{ payment.major }}</div>
+                            <small class="text-muted">{{ payment.class }}</small>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">
+                                {{ payment.building_id }}-{{ payment.room_id }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-{% if payment.payment_type == '住宿费' %}primary{% elif payment.payment_type == '水电费' %}info{% else %}secondary{% endif %}">
+                                {{ payment.payment_type }}
+                            </span>
+                        </td>
+                        <td>
+                            <strong class="text-success" style="font-size: 1.1em;">
+                                ¥{{ "%.2f"|format(payment.amount) }}
+                            </strong>
+                        </td>
+                        <td>{{ payment.payment_date }}</td>
+                        <td>
+                            <small class="text-muted">{{ payment.remark or '-' }}</small>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-danger"
+                                    onclick="confirmDeletePayment({{ payment.payment_id }}, '{{ payment.student_name }}', {{ payment.amount }})"
+                                    title="删除">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="10" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                            <p class="mt-2">暂无交费记录</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 分页 -->
+        {% if total_pages > 1 %}
+        <nav aria-label="页面导航">
+            <ul class="pagination justify-content-center">
+                <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                    <a class="page-link" href="?page={{ page-1 }}&student_id={{ filters.student_id }}&payment_type={{ filters.payment_type }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}">
+                        <i class="bi bi-chevron-left"></i> 上一页
+                    </a>
+                </li>
+
+                {% for p in range(1, total_pages + 1) %}
+                    {% if p == page %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ p }}</span>
+                    </li>
+                    {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ p }}&student_id={{ filters.student_id }}&payment_type={{ filters.payment_type }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}">{{ p }}</a>
+                    </li>
+                    {% elif p == 4 or p == total_pages - 3 %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+
+                <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                    <a class="page-link" href="?page={{ page+1 }}&student_id={{ filters.student_id }}&payment_type={{ filters.payment_type }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}">
+                        下一页 <i class="bi bi-chevron-right"></i>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 添加交费模态框 -->
+<div class="modal fade" id="addPaymentModal" tabindex="-1" aria-labelledby="addPaymentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="addPaymentModalLabel">
+                    <i class="bi bi-cash-coin"></i> 新增交费记录
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_payment') }}" onsubmit="return validatePaymentForm(this)">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <label for="paymentStudent" class="form-label">
+                                选择学生 <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="paymentStudent" name="student_id" required
+                                    onchange="updateStudentInfo(this)">
+                                <option value="">请选择学生</option>
+                                {% for student in students %}
+                                <option value="{{ student.student_id }}"
+                                        data-building="{{ student.building_id }}"
+                                        data-room="{{ student.room_id }}"
+                                        data-name="{{ student.name }}">
+                                    {{ student.student_id }} - {{ student.name }}
+                                    {% if student.building_id and student.room_id %}
+                                    ({{ student.building_id }}-{{ student.room_id }})
+                                    {% else %}
+                                    (未分配寝室)
+                                    {% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div id="studentInfoDisplay" class="mt-2"></div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="paymentType" class="form-label">
+                                交费类型 <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="paymentType" name="payment_type" required
+                                    onchange="updateSuggestedAmount(this)">
+                                <option value="">请选择</option>
+                                <option value="住宿费">住宿费</option>
+                                <option value="水电费">水电费</option>
+                                <option value="其他">其他</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="paymentAmount" class="form-label">
+                                金额（元）<span class="text-danger">*</span>
+                            </label>
+                            <input type="number" class="form-control" id="paymentAmount" name="amount"
+                                   required min="0.01" step="0.01" placeholder="0.00">
+                            <div class="form-text" id="amountSuggestion"></div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label for="paymentDate" class="form-label">
+                                交费日期 <span class="text-danger">*</span>
+                            </label>
+                            <input type="date" class="form-control" id="paymentDate" name="payment_date" required>
+                        </div>
+
+                        <div class="col-md-12">
+                            <label for="paymentRemark" class="form-label">备注</label>
+                            <textarea class="form-control" id="paymentRemark" name="remark"
+                                      rows="2" placeholder="选填，例如：2024-2025学年第一学期"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> 取消
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle"></i> 提交
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 设置默认日期为今天
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date().toISOString().split('T')[0];
+    const dateInput = document.getElementById('paymentDate');
+    if (dateInput) {
+        dateInput.value = today;
+    }
+});
+
+// 更新学生信息显示
+function updateStudentInfo(select) {
+    const option = select.options[select.selectedIndex];
+    const infoDiv = document.getElementById('studentInfoDisplay');
+
+    if (option.value) {
+        const building = option.dataset.building;
+        const room = option.dataset.room;
+        const name = option.dataset.name;
+
+        if (building && room && building !== 'None' && room !== 'None') {
+            infoDiv.innerHTML = `
+                <div class="alert alert-info py-2 mb-0">
+                    <small>
+                        <strong>${name}</strong> -
+                        公寓楼: <span class="badge bg-secondary">${building}</span>
+                        寝室: <span class="badge bg-secondary">${room}</span>
+                    </small>
+                </div>
+            `;
+        } else {
+            infoDiv.innerHTML = `
+                <div class="alert alert-warning py-2 mb-0">
+                    <small>⚠️ 该学生尚未分配寝室</small>
+                </div>
+            `;
+        }
+    } else {
+        infoDiv.innerHTML = '';
+    }
+}
+
+// 根据交费类型更新建议金额
+function updateSuggestedAmount(select) {
+    const suggestionDiv = document.getElementById('amountSuggestion');
+    const amountInput = document.getElementById('paymentAmount');
+
+    if (select.value === '住宿费') {
+        suggestionDiv.textContent = '建议金额：1000-1500元/学期';
+        if (!amountInput.value) {
+            amountInput.value = '1200.00';
+        }
+    } else if (select.value === '水电费') {
+        suggestionDiv.textContent = '建议金额：50-300元/月';
+        if (!amountInput.value) {
+            amountInput.value = '150.00';
+        }
+    } else {
+        suggestionDiv.textContent = '';
+    }
+}
+
+// 确认删除交费记录
+function confirmDeletePayment(id, studentName, amount) {
+    const message = `确定要删除以下交费记录吗？\n\n` +
+                   `学生: ${studentName}\n` +
+                   `金额: ¥${amount.toFixed(2)}\n\n` +
+                   `此操作不可恢复！`;
+
+    if (confirm(message)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/payments/delete/${id}`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// 表单验证
+function validatePaymentForm(form) {
+    const studentId = form.querySelector('[name="student_id"]').value;
+    const amount = parseFloat(form.querySelector('[name="amount"]').value);
+    const paymentType = form.querySelector('[name="payment_type"]').value;
+
+    if (!studentId) {
+        alert('请选择学生');
+        return false;
+    }
+
+    if (amount <= 0 || amount > 100000) {
+        alert('金额必须在 0.01-100000 之间');
+        return false;
+    }
+
+    // 合理性检查
+    if (paymentType === '住宿费' && amount < 500) {
+        if (!confirm(`住宿费金额较少（¥${amount.toFixed(2)}），是否继续？`)) {
+            return false;
+        }
+    }
+
+    if (paymentType === '水电费' && amount > 1000) {
+        if (!confirm(`水电费金额较高（¥${amount.toFixed(2)}），是否继续？`)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+</script>
+{% endblock %}
