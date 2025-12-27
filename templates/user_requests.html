@@ -1,6 +1,6 @@
 <!--
   文件名: templates/user_requests.html
-  说明: 注册申请审批页面
+  说明: 注册申请审批页面 - 添加权限选择功能
 -->
 {% extends "base.html" %}
 
@@ -102,16 +102,24 @@
                         </td>
                         <td>
                             {% if req.status == '待审批' %}
-                            <div class="btn-group btn-group-sm" role="group">
-                                <button class="btn btn-outline-success"
-                                        onclick="approveRequest({{ req.request_id }}, '{{ req.username }}')"
-                                        title="批准">
-                                    <i class="bi bi-check-lg"></i>
-                                </button>
-                                <button class="btn btn-outline-danger"
+                            <div class="d-flex flex-column gap-1">
+                                <!-- 批准表单 - 添加权限选择 -->
+                                <form method="POST" action="{{ url_for('approve_user_request', request_id=req.request_id) }}"
+                                      class="d-flex gap-1">
+                                    <select class="form-select form-select-sm" name="granted_permission" required>
+                                        <option value="">选择权限</option>
+                                        <option value="教师" {% if req.permission == '教师' %}selected{% endif %}>教师</option>
+                                        <option value="管理员" {% if req.permission == '管理员' %}selected{% endif %}>管理员</option>
+                                    </select>
+                                    <button type="submit" class="btn btn-success btn-sm" title="批准">
+                                        <i class="bi bi-check-lg"></i>
+                                    </button>
+                                </form>
+                                <!-- 拒绝按钮 -->
+                                <button class="btn btn-outline-danger btn-sm"
                                         onclick="rejectRequest({{ req.request_id }}, '{{ req.username }}')"
                                         title="拒绝">
-                                    <i class="bi bi-x-lg"></i>
+                                    <i class="bi bi-x-lg"></i> 拒绝
                                 </button>
                             </div>
                             {% elif req.status == '已批准' %}
@@ -188,17 +196,6 @@
 
 {% block extra_js %}
 <script>
-// 批准申请
-function approveRequest(requestId, username) {
-    if (confirm(`确定要批准用户 "${username}" 的注册申请吗？\n\n批准后将自动创建用户账户。`)) {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = `/user_requests/approve/${requestId}`;
-        document.body.appendChild(form);
-        form.submit();
-    }
-}
-
 // 拒绝申请
 function rejectRequest(requestId, username) {
     document.getElementById('rejectUsername').textContent = username;

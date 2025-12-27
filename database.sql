@@ -1,3 +1,4 @@
+DROP DATABASE IF EXISTS dorm_management;
 -- 学生公寓交费管理系统数据库脚本
 -- 创建数据库
 CREATE DATABASE IF NOT EXISTS dorm_management DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -68,15 +69,34 @@ CREATE TABLE payments (
 
 -- 5. 用户表
 CREATE TABLE users (
-    user_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '用户ID',
+    user_id VARCHAR(20) PRIMARY KEY COMMENT '用户ID',
     username VARCHAR(50) UNIQUE NOT NULL COMMENT '用户名',
     password VARCHAR(255) NOT NULL COMMENT '密码(加密)',
     realname VARCHAR(50) NOT NULL COMMENT '真实姓名',
     permission ENUM('管理员', '教师') NOT NULL DEFAULT '教师' COMMENT '权限',
+    email VARCHAR(100) COMMENT '邮箱',
+    phone VARCHAR(20) COMMENT '手机号',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
+
+-- 6. 用户注册申请表
+CREATE TABLE user_requests (
+    request_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '申请ID',
+    username VARCHAR(50) UNIQUE NOT NULL COMMENT '用户名',
+    password VARCHAR(255) NOT NULL COMMENT '密码(加密)',
+    realname VARCHAR(50) NOT NULL COMMENT '真实姓名',
+    permission ENUM('管理员', '教师') NOT NULL DEFAULT '教师' COMMENT '申请的权限',
+    email VARCHAR(100) COMMENT '邮箱',
+    phone VARCHAR(20) COMMENT '手机号',
+    status ENUM('待审批', '已批准', '已拒绝') DEFAULT '待审批' COMMENT '申请状态',
+    remark VARCHAR(200) COMMENT '备注/拒绝原因',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_status (status),
+    INDEX idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户注册申请表';
 
 -- ================================
 -- 插入示例数据
@@ -129,10 +149,17 @@ INSERT INTO payments (building_id, room_id, payment_date, payment_type, amount, 
 ('D栋', 'D101', '2024-09-10', '住宿费', 1000.00, '2024009', '2024-2025学年第一学期');
 
 -- 插入用户数据 (密码统一为: admin123, 使用SHA256加密)
-INSERT INTO users (username, password, realname, permission) VALUES
-('admin', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '系统管理员', '管理员'),
-('teacher1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '张老师', '教师'),
-('teacher2', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '李老师', '教师');
+-- 注意：user_id现在使用自动生成的格式
+INSERT INTO users (user_id, username, password, realname, permission, email, phone) VALUES
+('U25010001', 'admin', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '系统管理员', '管理员', 'admin@example.com', '13800000001'),
+('U25010002', 'teacher1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '张老师', '教师', 'teacher1@example.com', '13800000002'),
+('U25010003', 'teacher2', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '李老师', '教师', 'teacher2@example.com', '13800000003');
+
+-- 插入示例注册申请数据
+INSERT INTO user_requests (username, password, realname, permission, email, phone, status, remark) VALUES
+('newteacher1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '王老师', '教师', 'wang@example.com', '13800000004', '待审批', NULL),
+('newteacher2', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '赵老师', '教师', 'zhao@example.com', '13800000005', '已批准', '已批准 - 用户ID: U25010004'),
+('newadmin1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '刘管理员', '管理员', 'liu@example.com', '13800000006', '已拒绝', '管理员权限申请需要更多理由');
 
 -- 创建视图：学生交费统计
 CREATE VIEW student_payment_summary AS
