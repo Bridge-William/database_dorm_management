@@ -230,6 +230,133 @@ def register():
     return render_template('register.html')
 
 
+# ==================== 我的信息管理 ====================
+
+@app.route('/my_info')
+@login_required
+def my_info():
+    """查看和修改个人信息"""
+    cur = mysql.connection.cursor()
+    cur.execute("SELECT * FROM users WHERE user_id = %s", (session['user_id'],))
+    user = cur.fetchone()
+    cur.close()
+
+    if not user:
+        flash('用户信息不存在', 'danger')
+        return redirect(url_for('dashboard'))
+
+    return render_template('my_info.html', user=user)
+
+
+@app.route('/my_info/update', methods=['POST'])
+@login_required
+def update_my_info():
+    """更新个人信息"""
+    try:
+        # 获取表单数据
+        current_password = request.form.get('current_password')
+        new_password = request.form.get('new_password')
+        password_confirm = request.form.get('password_confirm')
+
+        cur = mysql.connection.cursor()
+
+        # 验证当前密码
+        cur.execute("SELECT password FROM users WHERE user_id = %s", (session['user_id'],))
+        user = cur.fetchone()
+
+        if not user:
+            flash('用户不存在', 'danger')
+            cur.close()
+            return redirect(url_for('my_info'))
+
+        # 验证当前密码（只有教师需要验证，管理员可以直接修改）
+        if session.get('permission') == '教师':
+            if not verify_password(user['password'], current_password):
+                flash('当前密码错误', 'danger')
+                cur.close()
+                return redirect(url_for('my_info'))
+
+        # 如果提供了新密码，则更新密码
+        if new_password:
+            if len(new_password) < 6:
+                flash('新密码长度至少6位', 'danger')
+                cur.close()
+                return redirect(url_for('my_info'))
+
+            if new_password != password_confirm:
+                flash('两次输入的新密码不一致', 'danger')
+                cur.close()
+                return redirect(url_for('my_info'))
+
+            # 加密新密码
+            hashed_password = hash_password(new_password)
+
+            # 更新密码
+            cur.execute("""
+                UPDATE users 
+                SET password = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = %s
+            """, (hashed_password, session['user_id']))
+
+        mysql.connection.commit()
+        cur.close()
+
+        flash('个人信息更新成功', 'success')
+
+    except Exception as e:
+        flash(f'更新失败: {str(e)}', 'danger')
+
+    return redirect(url_for('my_info'))
+
+
+# ==================== 忘记密码功能 ====================
+
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+    """忘记密码 - 重置密码为默认密码"""
+    if request.method == 'POST':
+        try:
+            user_id = request.form.get('user_id')
+
+            if not user_id:
+                flash('请输入用户ID', 'danger')
+                return redirect(url_for('forgot_password'))
+
+            cur = mysql.connection.cursor()
+
+            # 验证用户ID是否存在
+            cur.execute("SELECT user_id, realname FROM users WHERE user_id = %s", (user_id,))
+            user = cur.fetchone()
+
+            if not user:
+                flash('用户ID不存在', 'danger')
+                cur.close()
+                return redirect(url_for('forgot_password'))
+
+            # 重置密码为默认密码 123456
+            default_password = '123456'
+            hashed_password = hash_password(default_password)
+
+            # 更新密码
+            cur.execute("""
+                UPDATE users 
+                SET password = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = %s
+            """, (hashed_password, user_id))
+
+            mysql.connection.commit()
+            cur.close()
+
+            flash(f'密码已重置为默认密码: 123456，请尽快登录修改密码', 'success')
+            return redirect(url_for('login'))
+
+        except Exception as e:
+            flash(f'重置密码失败: {str(e)}', 'danger')
+            return redirect(url_for('forgot_password'))
+
+    return render_template('forgot_password.html')
+
+
 # ==================== 注册审批管理 ====================
 
 @app.route('/user_requests')

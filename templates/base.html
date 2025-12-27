@@ -105,6 +105,12 @@
                             <i class="bi bi-graph-up"></i> 统计报表
                         </a>
                     </li>
+                    <!-- 新增公告通知链接 -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('announcements') }}">
+                            <i class="bi bi-megaphone"></i> 公告通知
+                        </a>
+                    </li>
                     {% if session.permission == '管理员' %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('users') }}">
@@ -134,13 +140,23 @@
                             <i class="bi bi-person-circle"></i> {{ session.realname }}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#">
-                                <i class="bi bi-shield-check"></i> {{ session.permission }}
-                            </a></li>
+                            <!-- 新增：我的信息链接 -->
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('my_info') }}">
+                                    <i class="bi bi-person-lines-fill"></i> 我的信息
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#">
+                                    <i class="bi bi-shield-check"></i> {{ session.permission }}
+                                </a>
+                            </li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('logout') }}">
-                                <i class="bi bi-box-arrow-right"></i> 退出登录
-                            </a></li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('logout') }}">
+                                    <i class="bi bi-box-arrow-right"></i> 退出登录
+                                </a>
+                            </li>
                         </ul>
                     </li>
                 </ul>

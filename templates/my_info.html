@@ -1,0 +1,218 @@
+<!--
+  文件名: templates/my_info.html
+  说明: 我的信息页面 - 查看和修改个人信息
+-->
+{% extends "base.html" %}
+
+{% block title %}我的信息 - 学生公寓管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-person-lines-fill"></i> 我的信息</h2>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <!-- 基本信息卡片 -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-person-badge"></i> 基本信息</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <strong>用户ID:</strong>
+                    </div>
+                    <div class="col-6">
+                        <span class="badge bg-info">{{ user.user_id }}</span>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <strong>用户名:</strong>
+                    </div>
+                    <div class="col-6">
+                        {{ user.username }}
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <strong>真实姓名:</strong>
+                    </div>
+                    <div class="col-6">
+                        {{ user.realname }}
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <strong>权限级别:</strong>
+                    </div>
+                    <div class="col-6">
+                        <span class="badge bg-{% if user.permission == '管理员' %}danger{% else %}info{% endif %} px-3 py-2">
+                            {% if user.permission == '管理员' %}
+                            <i class="bi bi-shield-check"></i>
+                            {% else %}
+                            <i class="bi bi-person"></i>
+                            {% endif %}
+                            {{ user.permission }}
+                        </span>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <strong>邮箱:</strong>
+                    </div>
+                    <div class="col-6">
+                        {{ user.email or '未设置' }}
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <strong>手机号:</strong>
+                    </div>
+                    <div class="col-6">
+                        {{ user.phone or '未设置' }}
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-6">
+                        <strong>创建时间:</strong>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted">
+                            {% if user.created_at %}
+                            {{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </small>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-6">
+                        <strong>最后更新:</strong>
+                    </div>
+                    <div class="col-6">
+                        <small class="text-muted">
+                            {% if user.updated_at %}
+                            {{ user.updated_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <!-- 修改密码卡片 -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-warning">
+                <h5 class="mb-0"><i class="bi bi-key"></i> 修改密码</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('update_my_info') }}" onsubmit="return validatePasswordForm(this)">
+                    {% if session.permission == '教师' %}
+                    <div class="mb-3">
+                        <label for="currentPassword" class="form-label">
+                            当前密码 <span class="text-danger">*</span>
+                        </label>
+                        <input type="password" class="form-control" id="currentPassword" name="current_password"
+                               required minlength="6" placeholder="请输入当前密码">
+                        <div class="form-text">教师用户需要验证当前密码</div>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle"></i>
+                        管理员用户可以直接修改密码，无需验证当前密码
+                    </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <label for="newPassword" class="form-label">
+                            新密码 <span class="text-danger">*</span>
+                        </label>
+                        <input type="password" class="form-control" id="newPassword" name="new_password"
+                               required minlength="6" placeholder="至少6位字符">
+                        <div class="form-text">建议使用字母、数字和特殊字符的组合</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="confirmPassword" class="form-label">
+                            确认新密码 <span class="text-danger">*</span>
+                        </label>
+                        <input type="password" class="form-control" id="confirmPassword" name="password_confirm"
+                               required minlength="6" placeholder="再次输入新密码">
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>安全提示：</strong><br>
+                        1. 请定期更换密码<br>
+                        2. 不要使用简单密码（如123456）<br>
+                        3. 建议密码长度至少8位，包含字母和数字
+                    </div>
+
+                    <button type="submit" class="btn btn-warning w-100">
+                        <i class="bi bi-check-circle"></i> 更新密码
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- 安全提示 -->
+        <div class="card mt-4">
+            <div class="card-header bg-light">
+                <h6 class="mb-0"><i class="bi bi-shield-check"></i> 安全提示</h6>
+            </div>
+            <div class="card-body">
+                <ul class="small">
+                    <li>请妥善保管您的登录凭证</li>
+                    <li>不要在公共电脑上保存密码</li>
+                    <li>如发现账号异常，请立即联系管理员</li>
+                    <li>定期检查账户活动记录</li>
+                    {% if session.permission == '教师' %}
+                    <li class="text-danger">教师权限无法修改个人信息（姓名、邮箱等），如需修改请联系管理员</li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 表单验证
+function validatePasswordForm(form) {
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+
+    // 验证密码长度
+    if (newPassword.length < 6) {
+        alert('新密码长度至少6位');
+        return false;
+    }
+
+    // 验证密码一致性
+    if (newPassword !== confirmPassword) {
+        alert('两次输入的新密码不一致');
+        return false;
+    }
+
+    // 密码强度提示
+    if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+        if (!confirm('密码强度较弱，建议使用8位以上包含字母和数字的组合。是否继续？')) {
+            return false;
+        }
+    }
+
+    return true;
+}
+</script>
+{% endblock %}

@@ -74,14 +74,20 @@
             <small>默认管理员账号: U25010001 / admin123</small>
         </div>
 
-        <!-- 注册链接 -->
+        <!-- 注册链接和忘记密码 -->
         <div class="register-link text-center">
             <small class="text-muted">还没有账号？</small><br>
             <a href="{{ url_for('register') }}" class="btn btn-outline-primary btn-sm mt-2">
                 <i class="bi bi-person-plus"></i> 点此注册账号
             </a>
             <div class="mt-2">
-                <small class="text-muted">注册后需等待管理员审批</small>
+                <!-- 新增忘记密码链接 -->
+                <a href="{{ url_for('forgot_password') }}" class="text-decoration-none">
+                    <small><i class="bi bi-question-circle"></i> 忘记密码？</small>
+                </a>
+                <div class="mt-1">
+                    <small class="text-muted">注册后需等待管理员审批</small>
+                </div>
             </div>
         </div>
     </div>

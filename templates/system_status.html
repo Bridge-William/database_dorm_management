@@ -1,0 +1,425 @@
+[file name]: system_status.html
+[file content begin]
+<!--
+  文件名: templates/system_status.html
+  说明: 系统状态监控页面
+-->
+{% extends "base.html" %}
+
+{% block title %}系统状态 - 学生公寓管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-speedometer2"></i> 系统状态监控</h2>
+    <div class="btn-group">
+        <button class="btn btn-outline-success" onclick="refreshStatus()">
+            <i class="bi bi-arrow-clockwise"></i> 刷新状态
+        </button>
+        <button class="btn btn-outline-primary" onclick="downloadStatusReport()">
+            <i class="bi bi-download"></i> 下载报告
+        </button>
+    </div>
+</div>
+
+<!-- 系统概览 -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body text-center">
+                <i class="bi bi-cpu" style="font-size: 2rem;"></i>
+                <h6 class="mt-2">系统运行时间</h6>
+                <h4 id="uptime">加载中...</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body text-center">
+                <i class="bi bi-database" style="font-size: 2rem;"></i>
+                <h6 class="mt-2">数据库状态</h6>
+                <h4 id="dbStatus">加载中...</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body text-center">
+                <i class="bi bi-file-text" style="font-size: 2rem;"></i>
+                <h6 class="mt-2">日志文件大小</h6>
+                <h4 id="logSize">加载中...</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body text-center">
+                <i class="bi bi-people" style="font-size: 2rem;"></i>
+                <h6 class="mt-2">在线用户</h6>
+                <h4 id="onlineUsers">加载中...</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 详细状态信息 -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header bg-light">
+                <h6 class="mb-0"><i class="bi bi-server"></i> 服务器状态</h6>
+            </div>
+            <div class="card-body">
+                <div id="serverStatus">
+                    <!-- 服务器状态信息将通过JavaScript动态加载 -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header bg-light">
+                <h6 class="mb-0"><i class="bi bi-exclamation-triangle"></i> 系统警告</h6>
+            </div>
+            <div class="card-body">
+                <div id="systemWarnings">
+                    <!-- 系统警告信息将通过JavaScript动态加载 -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card mb-3">
+            <div class="card-header bg-light">
+                <h6 class="mb-0"><i class="bi bi-graph-up"></i> 性能指标</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="performanceChart" height="200"></canvas>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header bg-light">
+                <h6 class="mb-0"><i class="bi bi-calendar-check"></i> 最近活动</h6>
+            </div>
+            <div class="card-body">
+                <div id="recentActivities">
+                    <!-- 最近活动信息将通过JavaScript动态加载 -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 数据库性能面板 -->
+<div class="card mt-4">
+    <div class="card-header bg-light">
+        <h6 class="mb-0"><i class="bi bi-lightning-charge"></i> 数据库性能</h6>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted">查询次数</h6>
+                        <h3 id="queryCount" class="text-primary">0</h3>
+                        <small class="text-muted">今日</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted">平均响应时间</h6>
+                        <h3 id="avgResponseTime" class="text-success">0 ms</h3>
+                        <small class="text-muted">今日</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted">错误查询</h6>
+                        <h3 id="errorQueryCount" class="text-danger">0</h3>
+                        <small class="text-muted">今日</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+let performanceChart = null;
+
+// 页面加载完成后执行
+document.addEventListener('DOMContentLoaded', function() {
+    loadSystemStatus();
+    
+    // 每30秒自动刷新状态
+    setInterval(loadSystemStatus, 30000);
+});
+
+// 加载系统状态
+async function loadSystemStatus() {
+    try {
+        const response = await fetch('/api/system/status');
+        const data = await response.json();
+        
+        if (data.success) {
+            updateStatusDisplay(data);
+        } else {
+            showAlert('加载系统状态失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('加载系统状态失败:', error);
+        showAlert('加载系统状态失败，请检查网络连接', 'danger');
+    }
+}
+
+// 更新状态显示
+function updateStatusDisplay(data) {
+    // 更新概览卡片
+    document.getElementById('uptime').textContent = formatUptime(data.uptime);
+    document.getElementById('dbStatus').textContent = data.database_status;
+    document.getElementById('logSize').textContent = data.log_size;
+    document.getElementById('onlineUsers').textContent = data.online_users;
+    
+    // 更新服务器状态
+    updateServerStatus(data.server_status);
+    
+    // 更新系统警告
+    updateSystemWarnings(data.warnings);
+    
+    // 更新最近活动
+    updateRecentActivities(data.recent_activities);
+    
+    // 更新数据库性能
+    updateDatabasePerformance(data.database_performance);
+    
+    // 更新性能图表
+    updatePerformanceChart(data.performance_data);
+}
+
+// 格式化运行时间
+function formatUptime(seconds) {
+    if (!seconds) return '未知';
+    
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    
+    if (days > 0) {
+        return `${days}天 ${hours}时`;
+    } else if (hours > 0) {
+        return `${hours}时 ${minutes}分`;
+    } else {
+        return `${minutes}分钟`;
+    }
+}
+
+// 更新服务器状态
+function updateServerStatus(status) {
+    const container = document.getElementById('serverStatus');
+    let html = '';
+    
+    for (const [key, value] of Object.entries(status)) {
+        let badgeClass = 'badge bg-success';
+        let displayValue = value;
+        
+        if (typeof value === 'boolean') {
+            displayValue = value ? '正常' : '异常';
+            badgeClass = value ? 'badge bg-success' : 'badge bg-danger';
+        } else if (typeof value === 'number') {
+            if (key.includes('usage') || key.includes('Usage')) {
+                if (value > 80) badgeClass = 'badge bg-danger';
+                else if (value > 60) badgeClass = 'badge bg-warning';
+                displayValue = value + '%';
+            } else if (key.includes('memory') || key.includes('Memory')) {
+                displayValue = (value / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+            }
+        }
+        
+        const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+        
+        html += `
+        <div class="row mb-2">
+            <div class="col-6">
+                <strong>${label}:</strong>
+            </div>
+            <div class="col-6">
+                <span class="${badgeClass}">${displayValue}</span>
+            </div>
+        </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+}
+
+// 更新系统警告
+function updateSystemWarnings(warnings) {
+    const container = document.getElementById('systemWarnings');
+    
+    if (!warnings || warnings.length === 0) {
+        container.innerHTML = '<div class="alert alert-success mb-0">无系统警告</div>';
+        return;
+    }
+    
+    let html = '';
+    warnings.forEach(warning => {
+        const alertClass = warning.level === 'ERROR' ? 'alert-danger' : 
+                          warning.level === 'WARNING' ? 'alert-warning' : 'alert-info';
+        
+        html += `
+        <div class="alert ${alertClass} alert-dismissible fade show mb-2">
+            <strong>${warning.title}</strong>
+            <br>
+            <small>${warning.message}</small>
+            <small class="text-muted d-block mt-1">${warning.time}</small>
+        </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+// 更新最近活动
+function updateRecentActivities(activities) {
+    const container = document.getElementById('recentActivities');
+    
+    if (!activities || activities.length === 0) {
+        container.innerHTML = '<div class="text-muted text-center py-3">暂无活动记录</div>';
+        return;
+    }
+    
+    let html = '<div class="list-group list-group-flush">';
+    
+    activities.forEach(activity => {
+        let icon = 'bi-activity';
+        let textClass = '';
+        
+        if (activity.type === '登录') {
+            icon = 'bi-box-arrow-in-right';
+            textClass = 'text-success';
+        } else if (activity.type === '登出') {
+            icon = 'bi-box-arrow-right';
+            textClass = 'text-secondary';
+        } else if (activity.type.includes('添加')) {
+            icon = 'bi-plus-circle';
+            textClass = 'text-primary';
+        } else if (activity.type.includes('删除')) {
+            icon = 'bi-trash';
+            textClass = 'text-danger';
+        } else if (activity.type.includes('编辑')) {
+            icon = 'bi-pencil';
+            textClass = 'text-warning';
+        }
+        
+        html += `
+        <div class="list-group-item border-0 py-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="bi ${icon} me-2 ${textClass}"></i>
+                    <strong class="${textClass}">${activity.user}</strong>
+                    <small>${activity.action}</small>
+                </div>
+                <small class="text-muted">${activity.time}</small>
+            </div>
+        </div>
+        `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+// 更新数据库性能
+function updateDatabasePerformance(performance) {
+    if (!performance) return;
+    
+    document.getElementById('queryCount').textContent = performance.query_count || 0;
+    document.getElementById('avgResponseTime').textContent = 
+        (performance.avg_response_time || 0).toFixed(1) + ' ms';
+    document.getElementById('errorQueryCount').textContent = performance.error_count || 0;
+}
+
+// 更新性能图表
+function updatePerformanceChart(performanceData) {
+    if (!performanceData || !performanceData.labels) return;
+    
+    const ctx = document.getElementById('performanceChart').getContext('2d');
+    
+    if (performanceChart) {
+        performanceChart.destroy();
+    }
+    
+    performanceChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: performanceData.labels,
+            datasets: [
+                {
+                    label: 'CPU使用率 (%)',
+                    data: performanceData.cpu,
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    tension: 0.1
+                },
+                {
+                    label: '内存使用率 (%)',
+                    data: performanceData.memory,
+                    borderColor: 'rgb(54, 162, 235)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    tension: 0.1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100
+                }
+            }
+        }
+    });
+}
+
+// 刷新状态
+function refreshStatus() {
+    loadSystemStatus();
+    showAlert('系统状态已刷新', 'info');
+}
+
+// 下载状态报告
+function downloadStatusReport() {
+    window.open('/api/system/status/report', '_blank');
+}
+
+// 显示提示消息
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 80px; right: 20px; z-index: 1050;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alertDiv);
+    
+    // 3秒后自动消失
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 3000);
+}
+</script>
+{% endblock %}

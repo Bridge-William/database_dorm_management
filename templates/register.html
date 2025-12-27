@@ -123,8 +123,12 @@
                 </div>
 
                 <div class="col-12 text-center">
-                    <a href="{{ url_for('login') }}" class="text-decoration-none">
+                    <a href="{{ url_for('login') }}" class="text-decoration-none me-3">
                         <i class="bi bi-arrow-left"></i> 返回登录
+                    </a>
+                    <!-- 新增忘记密码链接 -->
+                    <a href="{{ url_for('forgot_password') }}" class="text-decoration-none">
+                        <i class="bi bi-question-circle"></i> 忘记密码？
                     </a>
                 </div>
             </div>

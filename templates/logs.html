@@ -1,0 +1,509 @@
+[file name]: logs.html
+[file content begin]
+<!--
+  文件名: templates/logs.html
+  说明: 系统日志查看页面
+-->
+{% extends "base.html" %}
+
+{% block title %}系统日志 - 学生公寓管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-journal-text"></i> 系统日志</h2>
+    <div class="btn-group">
+        <button class="btn btn-outline-secondary" onclick="refreshLogs()">
+            <i class="bi bi-arrow-clockwise"></i> 刷新
+        </button>
+        <button class="btn btn-outline-danger" onclick="clearLogs()">
+            <i class="bi bi-trash"></i> 清空日志
+        </button>
+        <button class="btn btn-outline-primary" onclick="downloadLogs()">
+            <i class="bi bi-download"></i> 下载日志
+        </button>
+    </div>
+</div>
+
+<!-- 筛选栏 -->
+<div class="card mb-3">
+    <div class="card-header bg-light">
+        <h6 class="mb-0"><i class="bi bi-filter"></i> 日志筛选</h6>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="row g-3" onsubmit="filterLogs(event)">
+            <div class="col-md-3">
+                <label class="form-label">日志级别</label>
+                <select class="form-select" id="logLevel">
+                    <option value="all">全部级别</option>
+                    <option value="DEBUG">DEBUG</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARNING">WARNING</option>
+                    <option value="ERROR">ERROR</option>
+                    <option value="CRITICAL">CRITICAL</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">用户ID</label>
+                <input type="text" class="form-control" id="userId" placeholder="用户ID">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">操作类型</label>
+                <input type="text" class="form-control" id="operationType" placeholder="操作类型">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">关键字</label>
+                <input type="text" class="form-control" id="keyword" placeholder="搜索关键字">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">开始时间</label>
+                <input type="datetime-local" class="form-control" id="startTime">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">结束时间</label>
+                <input type="datetime-local" class="form-control" id="endTime">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary me-2">
+                    <i class="bi bi-search"></i> 筛选
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="resetFilters()">
+                    <i class="bi bi-x-circle"></i> 重置
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 日志统计 -->
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h6 class="text-muted">日志总数</h6>
+                <h3 id="totalLogs" class="text-primary">0</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h6 class="text-muted">INFO日志</h6>
+                <h3 id="infoLogs" class="text-info">0</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h6 class="text-muted">WARNING日志</h6>
+                <h3 id="warningLogs" class="text-warning">0</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h6 class="text-muted">ERROR日志</h6>
+                <h3 id="errorLogs" class="text-danger">0</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 日志列表 -->
+<div class="card">
+    <div class="card-header bg-light">
+        <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="bi bi-list"></i> 日志记录</h6>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                <label class="form-check-label" for="autoRefresh">
+                    <small>自动刷新 (10秒)</small>
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th width="15%">时间</th>
+                        <th width="8%">级别</th>
+                        <th width="12%">用户ID</th>
+                        <th width="20%">操作</th>
+                        <th width="35%">详情</th>
+                        <th width="10%">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="logTableBody">
+                    <!-- 日志数据将通过JavaScript动态加载 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="btn-group">
+                <button class="btn btn-outline-secondary btn-sm" onclick="loadMoreLogs()">
+                    <i class="bi bi-chevron-down"></i> 加载更多
+                </button>
+                <button class="btn btn-outline-primary btn-sm" onclick="scrollToTop()">
+                    <i class="bi bi-chevron-up"></i> 回到顶部
+                </button>
+            </div>
+            <div>
+                <small class="text-muted">显示 <span id="displayCount">0</span> 条记录</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 日志详情模态框 -->
+<div class="modal fade" id="logDetailModal" tabindex="-1" aria-labelledby="logDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="logDetailModalLabel">
+                    <i class="bi bi-info-circle"></i> 日志详情
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <strong>时间:</strong> <span id="detailTime"></span>
+                </div>
+                <div class="mb-3">
+                    <strong>级别:</strong> <span id="detailLevel" class="badge"></span>
+                </div>
+                <div class="mb-3">
+                    <strong>用户ID:</strong> <span id="detailUserId"></span>
+                </div>
+                <div class="mb-3">
+                    <strong>操作:</strong> <span id="detailOperation"></span>
+                </div>
+                <div class="mb-3">
+                    <strong>详情:</strong>
+                    <pre class="bg-light p-3 rounded mt-2" id="detailMessage"></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> 关闭
+                </button>
+                <button type="button" class="btn btn-primary" onclick="copyLogDetail()">
+                    <i class="bi bi-clipboard"></i> 复制详情
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentPage = 1;
+let logLimit = 50;
+let autoRefreshInterval = null;
+
+// 页面加载完成后执行
+document.addEventListener('DOMContentLoaded', function() {
+    loadLogs();
+    startAutoRefresh();
+    
+    // 设置自动刷新复选框事件
+    document.getElementById('autoRefresh').addEventListener('change', function() {
+        if (this.checked) {
+            startAutoRefresh();
+        } else {
+            stopAutoRefresh();
+        }
+    });
+});
+
+// 加载日志
+async function loadLogs() {
+    try {
+        const response = await fetch('/api/logs?page=' + currentPage + '&limit=' + logLimit);
+        const data = await response.json();
+        
+        if (data.success) {
+            renderLogs(data.logs);
+            updateStats(data.stats);
+        } else {
+            showAlert('加载日志失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('加载日志失败:', error);
+        showAlert('加载日志失败，请检查网络连接', 'danger');
+    }
+}
+
+// 渲染日志到表格
+function renderLogs(logs) {
+    const tableBody = document.getElementById('logTableBody');
+    
+    if (currentPage === 1) {
+        tableBody.innerHTML = '';
+    }
+    
+    logs.forEach(log => {
+        const row = document.createElement('tr');
+        
+        // 根据日志级别设置行样式
+        let rowClass = '';
+        let levelBadge = '';
+        
+        switch (log.level) {
+            case 'INFO':
+                levelBadge = '<span class="badge bg-info">INFO</span>';
+                break;
+            case 'WARNING':
+                levelBadge = '<span class="badge bg-warning">WARNING</span>';
+                rowClass = 'table-warning';
+                break;
+            case 'ERROR':
+                levelBadge = '<span class="badge bg-danger">ERROR</span>';
+                rowClass = 'table-danger';
+                break;
+            case 'DEBUG':
+                levelBadge = '<span class="badge bg-secondary">DEBUG</span>';
+                break;
+            default:
+                levelBadge = '<span class="badge bg-primary">' + log.level + '</span>';
+        }
+        
+        // 提取用户ID和操作类型
+        let userId = '未登录';
+        let operation = '未知操作';
+        let message = log.message;
+        
+        // 从日志消息中提取信息
+        const userMatch = log.message.match(/用户(?:ID)?[:\s]*([^\s,)]+)/);
+        if (userMatch) {
+            userId = userMatch[1];
+        }
+        
+        const operationMatch = log.message.match(/执行\s*([^-\s]+)/);
+        if (operationMatch) {
+            operation = operationMatch[1];
+        }
+        
+        row.className = rowClass;
+        row.innerHTML = `
+            <td><small>${log.time}</small></td>
+            <td>${levelBadge}</td>
+            <td><small>${userId}</small></td>
+            <td><small>${operation}</small></td>
+            <td>
+                <small class="text-truncate d-block" style="max-width: 400px;" title="${log.message}">
+                    ${log.message}
+                </small>
+            </td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="viewLogDetail('${log.time}', '${log.level}', '${userId}', '${operation}', '${log.message.replace(/'/g, "\\'")}')">
+                    <i class="bi bi-eye"></i> 详情
+                </button>
+            </td>
+        `;
+        
+        tableBody.appendChild(row);
+    });
+    
+    // 更新显示数量
+    document.getElementById('displayCount').textContent = tableBody.children.length;
+}
+
+// 更新统计信息
+function updateStats(stats) {
+    document.getElementById('totalLogs').textContent = stats.total;
+    document.getElementById('infoLogs').textContent = stats.info;
+    document.getElementById('warningLogs').textContent = stats.warning;
+    document.getElementById('errorLogs').textContent = stats.error;
+}
+
+// 查看日志详情
+function viewLogDetail(time, level, userId, operation, message) {
+    document.getElementById('detailTime').textContent = time;
+    document.getElementById('detailUserId').textContent = userId;
+    document.getElementById('detailOperation').textContent = operation;
+    document.getElementById('detailMessage').textContent = message;
+    
+    // 设置级别徽章
+    const levelBadge = document.getElementById('detailLevel');
+    levelBadge.className = 'badge ';
+    levelBadge.textContent = level;
+    
+    switch (level) {
+        case 'INFO':
+            levelBadge.classList.add('bg-info');
+            break;
+        case 'WARNING':
+            levelBadge.classList.add('bg-warning');
+            break;
+        case 'ERROR':
+            levelBadge.classList.add('bg-danger');
+            break;
+        case 'DEBUG':
+            levelBadge.classList.add('bg-secondary');
+            break;
+        default:
+            levelBadge.classList.add('bg-primary');
+    }
+    
+    const modal = new bootstrap.Modal(document.getElementById('logDetailModal'));
+    modal.show();
+}
+
+// 复制日志详情
+function copyLogDetail() {
+    const detail = `
+时间: ${document.getElementById('detailTime').textContent}
+级别: ${document.getElementById('detailLevel').textContent}
+用户ID: ${document.getElementById('detailUserId').textContent}
+操作: ${document.getElementById('detailOperation').textContent}
+详情: ${document.getElementById('detailMessage').textContent}
+    `.trim();
+    
+    navigator.clipboard.writeText(detail).then(() => {
+        showAlert('日志详情已复制到剪贴板', 'success');
+    }).catch(err => {
+        console.error('复制失败:', err);
+        showAlert('复制失败', 'danger');
+    });
+}
+
+// 筛选日志
+function filterLogs(event) {
+    event.preventDefault();
+    
+    const level = document.getElementById('logLevel').value;
+    const userId = document.getElementById('userId').value;
+    const operationType = document.getElementById('operationType').value;
+    const keyword = document.getElementById('keyword').value;
+    const startTime = document.getElementById('startTime').value;
+    const endTime = document.getElementById('endTime').value;
+    
+    // 构建查询参数
+    let queryParams = [];
+    if (level !== 'all') queryParams.push(`level=${level}`);
+    if (userId) queryParams.push(`userId=${encodeURIComponent(userId)}`);
+    if (operationType) queryParams.push(`operation=${encodeURIComponent(operationType)}`);
+    if (keyword) queryParams.push(`keyword=${encodeURIComponent(keyword)}`);
+    if (startTime) queryParams.push(`start=${encodeURIComponent(startTime)}`);
+    if (endTime) queryParams.push(`end=${encodeURIComponent(endTime)}`);
+    
+    const queryString = queryParams.length > 0 ? '?' + queryParams.join('&') : '';
+    
+    // 重新加载日志
+    currentPage = 1;
+    fetchAndRenderLogs(queryString);
+}
+
+// 重置筛选条件
+function resetFilters() {
+    document.getElementById('logLevel').value = 'all';
+    document.getElementById('userId').value = '';
+    document.getElementById('operationType').value = '';
+    document.getElementById('keyword').value = '';
+    document.getElementById('startTime').value = '';
+    document.getElementById('endTime').value = '';
+    
+    currentPage = 1;
+    loadLogs();
+}
+
+// 刷新日志
+function refreshLogs() {
+    currentPage = 1;
+    loadLogs();
+    showAlert('日志已刷新', 'info');
+}
+
+// 加载更多日志
+function loadMoreLogs() {
+    currentPage++;
+    loadLogs();
+}
+
+// 获取并渲染日志
+async function fetchAndRenderLogs(queryString = '') {
+    try {
+        const response = await fetch('/api/logs?page=' + currentPage + '&limit=' + logLimit + queryString);
+        const data = await response.json();
+        
+        if (data.success) {
+            renderLogs(data.logs);
+            updateStats(data.stats);
+        }
+    } catch (error) {
+        console.error('加载日志失败:', error);
+    }
+}
+
+// 清空日志
+function clearLogs() {
+    if (confirm('确定要清空所有日志吗？此操作不可恢复！')) {
+        fetch('/api/logs/clear', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('日志已清空', 'success');
+                    refreshLogs();
+                } else {
+                    showAlert('清空日志失败: ' + data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('清空日志失败:', error);
+                showAlert('清空日志失败', 'danger');
+            });
+    }
+}
+
+// 下载日志
+function downloadLogs() {
+    window.open('/api/logs/download', '_blank');
+}
+
+// 开始自动刷新
+function startAutoRefresh() {
+    stopAutoRefresh(); // 先停止现有的定时器
+    autoRefreshInterval = setInterval(refreshLogs, 10000); // 10秒刷新一次
+}
+
+// 停止自动刷新
+function stopAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+    }
+}
+
+// 回到顶部
+function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// 显示提示消息
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 80px; right: 20px; z-index: 1050;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alertDiv);
+    
+    // 3秒后自动消失
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 3000);
+}
+</script>
+{% endblock %}
