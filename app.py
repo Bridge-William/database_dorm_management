@@ -201,13 +201,7 @@ def register():
 
             cur = mysql.connection.cursor()
 
-            # 检查用户名是否已存在（在users表中）
-            cur.execute("SELECT username FROM users WHERE username = %s", (username,))
-            if cur.fetchone():
-                flash('用户名已存在，请选择其他用户名', 'danger')
-                cur.close()
-                return redirect(url_for('register'))
-
+            # 注意：不再检查用户名是否已存在，允许多个用户使用相同的用户名
             # 检查是否有待审批的同名申请（限制每个用户只有一个待审批申请）
             cur.execute("SELECT username FROM user_requests WHERE username = %s AND status = '待审批'", (username,))
             if cur.fetchone():
@@ -303,12 +297,7 @@ def approve_user_request(request_id):
             cur.close()
             return redirect(url_for('user_requests'))
 
-        # 检查用户名是否已存在（在users表中）
-        cur.execute("SELECT username FROM users WHERE username = %s", (user_request['username'],))
-        if cur.fetchone():
-            flash('用户名已存在，请拒绝此申请', 'danger')
-            cur.close()
-            return redirect(url_for('user_requests'))
+        # 注意：不再检查用户名是否已存在，允许多个用户使用相同的用户名
 
         # 生成用户ID
         user_id = generate_next_user_id()
@@ -479,7 +468,7 @@ def dashboard():
 @app.route('/students')
 @login_required
 def students():
-    """学生列表"""
+    """学生列表 - 添加民族查询"""
     page = request.args.get('page', 1, type=int)
     search = request.args.get('search', '')
     per_page = 15
@@ -492,9 +481,10 @@ def students():
                    (SELECT COUNT(*) FROM payments WHERE student_id = s.student_id) as payment_count,
                    (SELECT SUM(amount) FROM payments WHERE student_id = s.student_id) as total_paid
             FROM students s
-            WHERE s.student_id LIKE %s OR s.name LIKE %s OR s.major LIKE %s OR s.class LIKE %s
+            WHERE s.student_id LIKE %s OR s.name LIKE %s OR s.major LIKE %s OR s.class LIKE %s OR s.ethnicity LIKE %s
+            OR s.phone LIKE %s
             ORDER BY s.student_id
-        """, (f'%{search}%', f'%{search}%', f'%{search}%', f'%{search}%'))
+        """, (f'%{search}%', f'%{search}%', f'%{search}%', f'%{search}%', f'%{search}%', f'%{search}%'))
     else:
         cur.execute("""
             SELECT s.*, 
@@ -763,37 +753,66 @@ def delete_building(building_id):
 @app.route('/rooms')
 @login_required
 def rooms():
-    """寝室列表"""
+    """寝室列表 - 增加查询功能"""
     building_filter = request.args.get('building', '')
+    room_id_filter = request.args.get('room_id', '')
+    available_beds_filter = request.args.get('available_beds', '')
+    fee_min = request.args.get('fee_min', '')
+    fee_max = request.args.get('fee_max', '')
 
     cur = mysql.connection.cursor()
 
-    if building_filter:
-        cur.execute("""
-            SELECT r.*,
-                   (SELECT COUNT(*) FROM students WHERE room_id = r.room_id) as current_occupancy,
-                   r.capacity - (SELECT COUNT(*) FROM students WHERE room_id = r.room_id) as available_beds
-            FROM rooms r
-            WHERE r.building_id = %s
-            ORDER BY r.room_id
-        """, (building_filter,))
-    else:
-        cur.execute("""
-            SELECT r.*,
-                   (SELECT COUNT(*) FROM students WHERE room_id = r.room_id) as current_occupancy,
-                   r.capacity - (SELECT COUNT(*) FROM students WHERE room_id = r.room_id) as available_beds
-            FROM rooms r
-            ORDER BY r.room_id
-        """)
+    # 构建查询
+    query = """
+        SELECT r.*,
+               (SELECT COUNT(*) FROM students WHERE room_id = r.room_id) as current_occupancy,
+               r.capacity - (SELECT COUNT(*) FROM students WHERE room_id = r.room_id) as available_beds
+        FROM rooms r
+        WHERE 1=1
+    """
+    params = []
 
+    if building_filter:
+        query += " AND r.building_id = %s"
+        params.append(building_filter)
+
+    if room_id_filter:
+        query += " AND r.room_id LIKE %s"
+        params.append(f'%{room_id_filter}%')
+
+    if fee_min:
+        query += " AND r.fee >= %s"
+        params.append(float(fee_min))
+
+    if fee_max:
+        query += " AND r.fee <= %s"
+        params.append(float(fee_max))
+
+    query += " ORDER BY r.building_id, r.room_id"
+
+    cur.execute(query, params)
     rooms_list = cur.fetchall()
+
+    # 根据剩余床位筛选
+    if available_beds_filter:
+        if available_beds_filter == '0':  # 已满员
+            rooms_list = [r for r in rooms_list if r['available_beds'] == 0]
+        elif available_beds_filter == '1':  # 有床位
+            rooms_list = [r for r in rooms_list if r['available_beds'] > 0]
+        elif available_beds_filter == '2':  # 2个以上床位
+            rooms_list = [r for r in rooms_list if r['available_beds'] >= 2]
+        elif available_beds_filter == '4':  # 4个以上床位
+            rooms_list = [r for r in rooms_list if r['available_beds'] >= 4]
 
     cur.execute("SELECT building_id FROM buildings ORDER BY building_id")
     buildings = cur.fetchall()
 
     cur.close()
 
-    return render_template('rooms.html', rooms=rooms_list, buildings=buildings, building_filter=building_filter)
+    return render_template('rooms.html',
+                          rooms=rooms_list,
+                          buildings=buildings,
+                          building_filter=building_filter)
 
 
 @app.route('/rooms/add', methods=['POST'])
@@ -872,9 +891,14 @@ def delete_room(room_id):
 @app.route('/payments')
 @login_required
 def payments():
-    """交费记录列表"""
+    """交费记录列表 - 增强查询功能"""
     page = request.args.get('page', 1, type=int)
     student_id = request.args.get('student_id', '')
+    student_name = request.args.get('student_name', '')
+    major = request.args.get('major', '')
+    class_name = request.args.get('class', '')
+    building_id = request.args.get('building_id', '')
+    room_id = request.args.get('room_id', '')
     payment_type = request.args.get('payment_type', '')
     start_date = request.args.get('start_date', '')
     end_date = request.args.get('end_date', '')
@@ -883,7 +907,7 @@ def payments():
     cur = mysql.connection.cursor()
 
     query = """
-        SELECT p.*, s.name as student_name, s.major, s.class
+        SELECT p.*, s.name as student_name, s.major, s.class, s.building_id, s.room_id
         FROM payments p
         JOIN students s ON p.student_id = s.student_id
         WHERE 1=1
@@ -893,6 +917,26 @@ def payments():
     if student_id:
         query += " AND p.student_id LIKE %s"
         params.append(f'%{student_id}%')
+
+    if student_name:
+        query += " AND s.name LIKE %s"
+        params.append(f'%{student_name}%')
+
+    if major:
+        query += " AND s.major LIKE %s"
+        params.append(f'%{major}%')
+
+    if class_name:
+        query += " AND s.class LIKE %s"
+        params.append(f'%{class_name}%')
+
+    if building_id:
+        query += " AND s.building_id LIKE %s"
+        params.append(f'%{building_id}%')
+
+    if room_id:
+        query += " AND s.room_id LIKE %s"
+        params.append(f'%{room_id}%')
 
     if payment_type:
         query += " AND p.payment_type = %s"
@@ -942,8 +986,17 @@ def payments():
                            students=students,
                            buildings=buildings,
                            rooms=rooms,
-                           filters={'student_id': student_id, 'payment_type': payment_type,
-                                    'start_date': start_date, 'end_date': end_date})
+                           filters={
+                               'student_id': student_id,
+                               'student_name': student_name,
+                               'major': major,
+                               'class': class_name,
+                               'building_id': building_id,
+                               'room_id': room_id,
+                               'payment_type': payment_type,
+                               'start_date': start_date,
+                               'end_date': end_date
+                           })
 
 
 @app.route('/payments/add', methods=['POST'])
@@ -979,6 +1032,34 @@ def add_payment():
         flash('交费记录添加成功', 'success')
     except Exception as e:
         flash(f'添加失败: {str(e)}', 'danger')
+
+    return redirect(url_for('payments'))
+
+
+@app.route('/payments/edit/<int:payment_id>', methods=['POST'])
+@login_required
+def edit_payment(payment_id):
+    """修改交费记录"""
+    try:
+        payment_date = request.form.get('payment_date')
+        payment_type = request.form.get('payment_type')
+        amount = request.form.get('amount', type=float)
+        remark = request.form.get('remark', '')
+
+        cur = mysql.connection.cursor()
+
+        cur.execute("""
+            UPDATE payments 
+            SET payment_date=%s, payment_type=%s, amount=%s, remark=%s
+            WHERE payment_id=%s
+        """, (payment_date, payment_type, amount, remark, payment_id))
+
+        mysql.connection.commit()
+        cur.close()
+
+        flash('交费记录修改成功', 'success')
+    except Exception as e:
+        flash(f'修改失败: {str(e)}', 'danger')
 
     return redirect(url_for('payments'))
 
@@ -1080,9 +1161,40 @@ def reports():
 @app.route('/users')
 @admin_required
 def users():
-    """用户管理"""
+    """用户管理 - 添加查询功能"""
+    user_id = request.args.get('user_id', '')
+    username = request.args.get('username', '')
+    realname = request.args.get('realname', '')
+    permission = request.args.get('permission', '')
+
     cur = mysql.connection.cursor()
-    cur.execute("SELECT user_id, username, realname, permission, created_at, updated_at FROM users ORDER BY user_id")
+
+    query = """
+        SELECT user_id, username, realname, permission, created_at, updated_at 
+        FROM users 
+        WHERE 1=1
+    """
+    params = []
+
+    if user_id:
+        query += " AND user_id LIKE %s"
+        params.append(f'%{user_id}%')
+
+    if username:
+        query += " AND username LIKE %s"
+        params.append(f'%{username}%')
+
+    if realname:
+        query += " AND realname LIKE %s"
+        params.append(f'%{realname}%')
+
+    if permission:
+        query += " AND permission = %s"
+        params.append(permission)
+
+    query += " ORDER BY user_id"
+
+    cur.execute(query, params)
     users_list = cur.fetchall()
 
     # 获取待审批数量
@@ -1097,7 +1209,13 @@ def users():
     return render_template('users.html',
                            users=users_list,
                            next_user_id=next_user_id,
-                           pending_requests_count=pending_count)
+                           pending_requests_count=pending_count,
+                           filters={
+                               'user_id': user_id,
+                               'username': username,
+                               'realname': realname,
+                               'permission': permission
+                           })
 
 
 @app.route('/users/add', methods=['POST'])
@@ -1119,12 +1237,7 @@ def add_user():
 
         cur = mysql.connection.cursor()
 
-        # 检查用户名是否已存在
-        cur.execute("SELECT username FROM users WHERE username = %s", (username,))
-        if cur.fetchone():
-            flash('用户名已存在', 'danger')
-            cur.close()
-            return redirect(url_for('users'))
+        # 注意：不再检查用户名是否已存在，允许多个用户使用相同的用户名
 
         # 生成用户ID
         user_id = generate_next_user_id()
@@ -1228,4 +1341,3 @@ def api_get_student(student_id):
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
-

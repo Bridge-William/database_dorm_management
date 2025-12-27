@@ -67,10 +67,10 @@ CREATE TABLE payments (
     INDEX idx_type (payment_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='交费记录表';
 
--- 5. 用户表
+-- 5. 用户表（修改：移除username的唯一约束）
 CREATE TABLE users (
     user_id VARCHAR(20) PRIMARY KEY COMMENT '用户ID',
-    username VARCHAR(50) UNIQUE NOT NULL COMMENT '用户名',
+    username VARCHAR(50) NOT NULL COMMENT '用户名',  -- 移除了UNIQUE约束
     password VARCHAR(255) NOT NULL COMMENT '密码(加密)',
     realname VARCHAR(50) NOT NULL COMMENT '真实姓名',
     permission ENUM('管理员', '教师') NOT NULL DEFAULT '教师' COMMENT '权限',
@@ -78,13 +78,13 @@ CREATE TABLE users (
     phone VARCHAR(20) COMMENT '手机号',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_username (username)
+    INDEX idx_username (username)  -- 普通索引，非唯一
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
 
--- 6. 用户注册申请表
+-- 6. 用户注册申请表（修改：移除username的唯一约束，允许同一用户多次申请）
 CREATE TABLE user_requests (
     request_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '申请ID',
-    username VARCHAR(50) UNIQUE NOT NULL COMMENT '用户名',
+    username VARCHAR(50) NOT NULL COMMENT '用户名',  -- 移除了UNIQUE约束
     password VARCHAR(255) NOT NULL COMMENT '密码(加密)',
     realname VARCHAR(50) NOT NULL COMMENT '真实姓名',
     permission ENUM('管理员', '教师') NOT NULL DEFAULT '教师' COMMENT '申请的权限',
@@ -94,6 +94,7 @@ CREATE TABLE user_requests (
     remark VARCHAR(200) COMMENT '备注/拒绝原因',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_username_status (username, status),  -- 添加复合索引，提高查询效率
     INDEX idx_status (status),
     INDEX idx_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户注册申请表';
@@ -149,17 +150,20 @@ INSERT INTO payments (building_id, room_id, payment_date, payment_type, amount, 
 ('D栋', 'D101', '2024-09-10', '住宿费', 1000.00, '2024009', '2024-2025学年第一学期');
 
 -- 插入用户数据 (密码统一为: admin123, 使用SHA256加密)
--- 注意：user_id现在使用自动生成的格式
+-- 注意：user_id现在使用自动生成的格式，允许重复的username
 INSERT INTO users (user_id, username, password, realname, permission, email, phone) VALUES
 ('U25010001', 'admin', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '系统管理员', '管理员', 'admin@example.com', '13800000001'),
-('U25010002', 'teacher1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '张老师', '教师', 'teacher1@example.com', '13800000002'),
-('U25010003', 'teacher2', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '李老师', '教师', 'teacher2@example.com', '13800000003');
+('U25010002', 'teacher', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '张老师', '教师', 'zhang@example.com', '13800000002'),
+('U25010003', 'teacher', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '李老师', '教师', 'li@example.com', '13800000003'),
+('U25010004', 'teacher', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '王老师', '教师', 'wang@example.com', '13800000004');
 
--- 插入示例注册申请数据
+-- 插入示例注册申请数据（现在允许重复的用户名）
 INSERT INTO user_requests (username, password, realname, permission, email, phone, status, remark) VALUES
-('newteacher1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '王老师', '教师', 'wang@example.com', '13800000004', '待审批', NULL),
-('newteacher2', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '赵老师', '教师', 'zhao@example.com', '13800000005', '已批准', '已批准 - 用户ID: U25010004'),
-('newadmin1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '刘管理员', '管理员', 'liu@example.com', '13800000006', '已拒绝', '管理员权限申请需要更多理由');
+('newteacher1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '赵老师', '教师', 'zhao@example.com', '13800000005', '待审批', NULL),
+('newteacher1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '赵老师（修改后）', '教师', 'zhao_updated@example.com', '13800000015', '已批准', '已批准 - 用户ID: U25010005，授予权限: 教师'),
+('newadmin1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '刘管理员', '管理员', 'liu@example.com', '13800000006', '已拒绝', '管理员权限申请需要更多理由'),
+('newadmin1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '刘管理员（修改后）', '管理员', 'liu_updated@example.com', '13800000016', '待审批', NULL),
+('teacher', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '孙老师', '教师', 'sun@example.com', '13800000007', '待审批', NULL);
 
 -- 创建视图：学生交费统计
 CREATE VIEW student_payment_summary AS
@@ -191,6 +195,42 @@ GROUP BY r.room_id, r.building_id, r.capacity, r.fee;
 
 -- 显示所有表
 SHOW TABLES;
+
+-- 显示表结构
+DESC buildings;
+DESC rooms;
+DESC students;
+DESC payments;
+DESC users;
+DESC user_requests;
+
+-- 显示示例数据数量
+SELECT '公寓楼数量: ' as label, COUNT(*) as count FROM buildings
+UNION ALL
+SELECT '寝室数量: ', COUNT(*) FROM rooms
+UNION ALL
+SELECT '学生数量: ', COUNT(*) FROM students
+UNION ALL
+SELECT '交费记录数量: ', COUNT(*) FROM payments
+UNION ALL
+SELECT '用户数量: ', COUNT(*) FROM users
+UNION ALL
+SELECT '注册申请数量: ', COUNT(*) FROM user_requests;
+
+-- 显示重复用户名示例
+SELECT '重复用户名示例: ' as note;
+SELECT username, COUNT(*) as count, GROUP_CONCAT(DISTINCT realname) as realnames
+FROM users 
+GROUP BY username 
+HAVING COUNT(*) > 1;
+
+-- 显示注册申请状态统计
+SELECT 
+    status,
+    COUNT(*) as count,
+    GROUP_CONCAT(DISTINCT username ORDER BY username) as usernames
+FROM user_requests 
+GROUP BY status;
 
 -- 数据库创建完成
 SELECT '数据库创建成功！' as message;

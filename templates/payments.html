@@ -1,6 +1,6 @@
 <!--
   文件名: templates/payments.html
-  说明: 交费管理页面 - 完整代码
+  说明: 交费管理页面 - 完整代码（增加编辑功能和增强查询）
 -->
 {% extends "base.html" %}
 
@@ -21,12 +21,38 @@
     </div>
     <div class="card-body">
         <form method="GET" class="row g-3">
-            <div class="col-md-3">
-                <label class="form-label">学号/姓名</label>
+            <div class="col-md-2">
+                <label class="form-label">学号</label>
                 <input type="text" class="form-control" name="student_id" value="{{ filters.student_id }}"
-                       placeholder="输入学号或姓名">
+                       placeholder="学号">
             </div>
             <div class="col-md-2">
+                <label class="form-label">姓名</label>
+                <input type="text" class="form-control" name="student_name" value="{{ filters.student_name }}"
+                       placeholder="姓名">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">专业</label>
+                <input type="text" class="form-control" name="major" value="{{ filters.major }}"
+                       placeholder="专业">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">班级</label>
+                <input type="text" class="form-control" name="class" value="{{ filters.class }}"
+                       placeholder="班级">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">公寓楼</label>
+                <input type="text" class="form-control" name="building_id" value="{{ filters.building_id }}"
+                       placeholder="公寓楼">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">寝室</label>
+                <input type="text" class="form-control" name="room_id" value="{{ filters.room_id }}"
+                       placeholder="寝室">
+            </div>
+
+            <div class="col-md-3">
                 <label class="form-label">交费类型</label>
                 <select class="form-select" name="payment_type">
                     <option value="">全部类型</option>
@@ -35,11 +61,11 @@
                     <option value="其他" {% if filters.payment_type == '其他' %}selected{% endif %}>其他</option>
                 </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
                 <label class="form-label">开始日期</label>
                 <input type="date" class="form-control" name="start_date" value="{{ filters.start_date }}">
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
                 <label class="form-label">结束日期</label>
                 <input type="date" class="form-control" name="end_date" value="{{ filters.end_date }}">
             </div>
@@ -85,15 +111,17 @@
                 <thead class="table-light">
                     <tr>
                         <th width="6%">编号</th>
-                        <th width="10%">学号</th>
+                        <th width="8%">学号</th>
                         <th width="8%">姓名</th>
-                        <th width="15%">专业班级</th>
-                        <th width="10%">公寓-寝室</th>
+                        <th width="10%">专业</th>
+                        <th width="8%">班级</th>
+                        <th width="8%">公寓楼</th>
+                        <th width="8%">寝室</th>
                         <th width="8%">交费类型</th>
-                        <th width="10%">金额</th>
+                        <th width="8%">金额</th>
                         <th width="10%">交费日期</th>
                         <th width="15%">备注</th>
-                        <th width="8%">操作</th>
+                        <th width="10%">操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -108,11 +136,18 @@
                         </td>
                         <td>
                             <div>{{ payment.major }}</div>
+                        </td>
+                        <td>
                             <small class="text-muted">{{ payment.class }}</small>
                         </td>
                         <td>
                             <span class="badge bg-secondary">
-                                {{ payment.building_id }}-{{ payment.room_id }}
+                                {{ payment.building_id }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-info">
+                                {{ payment.room_id }}
                             </span>
                         </td>
                         <td>
@@ -130,16 +165,23 @@
                             <small class="text-muted">{{ payment.remark or '-' }}</small>
                         </td>
                         <td>
-                            <button class="btn btn-sm btn-outline-danger"
-                                    onclick="confirmDeletePayment({{ payment.payment_id }}, '{{ payment.student_name }}', {{ payment.amount }})"
-                                    title="删除">
-                                <i class="bi bi-trash"></i>
-                            </button>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button class="btn btn-outline-primary"
+                                        onclick="editPayment({{ payment.payment_id }}, '{{ payment.payment_date }}', '{{ payment.payment_type }}', {{ payment.amount }}, '{{ payment.remark or '' }}')"
+                                        title="编辑">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-danger"
+                                        onclick="confirmDeletePayment({{ payment.payment_id }}, '{{ payment.student_name }}', {{ payment.amount }})"
+                                        title="删除">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="10" class="text-center text-muted py-4">
+                        <td colspan="12" class="text-center text-muted py-4">
                             <i class="bi bi-inbox" style="font-size: 2rem;"></i>
                             <p class="mt-2">暂无交费记录</p>
                         </td>
@@ -154,7 +196,7 @@
         <nav aria-label="页面导航">
             <ul class="pagination justify-content-center">
                 <li class="page-item {% if page == 1 %}disabled{% endif %}">
-                    <a class="page-link" href="?page={{ page-1 }}&student_id={{ filters.student_id }}&payment_type={{ filters.payment_type }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}">
+                    <a class="page-link" href="?page={{ page-1 }}&{% for key, value in filters.items() %}{% if value %}{{ key }}={{ value }}&{% endif %}{% endfor %}">
                         <i class="bi bi-chevron-left"></i> 上一页
                     </a>
                 </li>
@@ -166,7 +208,7 @@
                     </li>
                     {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
                     <li class="page-item">
-                        <a class="page-link" href="?page={{ p }}&student_id={{ filters.student_id }}&payment_type={{ filters.payment_type }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}">{{ p }}</a>
+                        <a class="page-link" href="?page={{ p }}&{% for key, value in filters.items() %}{% if value %}{{ key }}={{ value }}&{% endif %}{% endfor %}">{{ p }}</a>
                     </li>
                     {% elif p == 4 or p == total_pages - 3 %}
                     <li class="page-item disabled">
@@ -176,7 +218,7 @@
                 {% endfor %}
 
                 <li class="page-item {% if page == total_pages %}disabled{% endif %}">
-                    <a class="page-link" href="?page={{ page+1 }}&student_id={{ filters.student_id }}&payment_type={{ filters.payment_type }}&start_date={{ filters.start_date }}&end_date={{ filters.end_date }}">
+                    <a class="page-link" href="?page={{ page+1 }}&{% for key, value in filters.items() %}{% if value %}{{ key }}={{ value }}&{% endif %}{% endfor %}">
                         下一页 <i class="bi bi-chevron-right"></i>
                     </a>
                 </li>
@@ -272,6 +314,64 @@
     </div>
 </div>
 
+<!-- 编辑交费记录模态框 -->
+<div class="modal fade" id="editPaymentModal" tabindex="-1" aria-labelledby="editPaymentModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editPaymentModalLabel">
+                    <i class="bi bi-pencil-square"></i> 编辑交费记录
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" id="editPaymentForm" onsubmit="return validateEditPaymentForm(this)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="editPaymentId" class="form-label">交费编号</label>
+                        <input type="text" class="form-control" id="editPaymentId" disabled>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editPaymentType" class="form-label">
+                            交费类型 <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="editPaymentType" name="payment_type" required>
+                            <option value="">请选择</option>
+                            <option value="住宿费">住宿费</option>
+                            <option value="水电费">水电费</option>
+                            <option value="其他">其他</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editPaymentAmount" class="form-label">
+                            金额（元）<span class="text-danger">*</span>
+                        </label>
+                        <input type="number" class="form-control" id="editPaymentAmount" name="amount"
+                               required min="0.01" step="0.01">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editPaymentDate" class="form-label">
+                            交费日期 <span class="text-danger">*</span>
+                        </label>
+                        <input type="date" class="form-control" id="editPaymentDate" name="payment_date" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editPaymentRemark" class="form-label">备注</label>
+                        <textarea class="form-control" id="editPaymentRemark" name="remark" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> 取消
+                    </button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-check-circle"></i> 保存修改
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -337,6 +437,19 @@ function updateSuggestedAmount(select) {
     }
 }
 
+// 编辑交费记录
+function editPayment(id, date, type, amount, remark) {
+    document.getElementById('editPaymentId').value = id;
+    document.getElementById('editPaymentType').value = type;
+    document.getElementById('editPaymentAmount').value = amount;
+    document.getElementById('editPaymentDate').value = date;
+    document.getElementById('editPaymentRemark').value = remark;
+    document.getElementById('editPaymentForm').action = `/payments/edit/${id}`;
+
+    const modal = new bootstrap.Modal(document.getElementById('editPaymentModal'));
+    modal.show();
+}
+
 // 确认删除交费记录
 function confirmDeletePayment(id, studentName, amount) {
     const message = `确定要删除以下交费记录吗？\n\n` +
@@ -363,6 +476,32 @@ function validatePaymentForm(form) {
         alert('请选择学生');
         return false;
     }
+
+    if (amount <= 0 || amount > 100000) {
+        alert('金额必须在 0.01-100000 之间');
+        return false;
+    }
+
+    // 合理性检查
+    if (paymentType === '住宿费' && amount < 500) {
+        if (!confirm(`住宿费金额较少（¥${amount.toFixed(2)}），是否继续？`)) {
+            return false;
+        }
+    }
+
+    if (paymentType === '水电费' && amount > 1000) {
+        if (!confirm(`水电费金额较高（¥${amount.toFixed(2)}），是否继续？`)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// 编辑表单验证
+function validateEditPaymentForm(form) {
+    const amount = parseFloat(form.querySelector('[name="amount"]').value);
+    const paymentType = form.querySelector('[name="payment_type"]').value;
 
     if (amount <= 0 || amount > 100000) {
         alert('金额必须在 0.01-100000 之间');

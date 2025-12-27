@@ -1,6 +1,6 @@
 <!--
   文件名: templates/users.html
-  说明: 用户管理页面 - 完整代码（仅管理员可访问）
+  说明: 用户管理页面 - 完整代码（优化查询按钮大小）
 -->
 {% extends "base.html" %}
 
@@ -19,6 +19,50 @@
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
             <i class="bi bi-plus-lg"></i> 添加用户
         </button>
+    </div>
+</div>
+
+<!-- 查询栏 -->
+<div class="card mb-3">
+    <div class="card-header bg-light">
+        <h6 class="mb-0"><i class="bi bi-search"></i> 用户查询</h6>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('users') }}" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label">用户ID</label>
+                <input type="text" class="form-control" name="user_id" value="{{ filters.user_id }}"
+                       placeholder="用户ID">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">用户名</label>
+                <input type="text" class="form-control" name="username" value="{{ filters.username }}"
+                       placeholder="用户名">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">真实姓名</label>
+                <input type="text" class="form-control" name="realname" value="{{ filters.realname }}"
+                       placeholder="真实姓名">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">权限</label>
+                <select class="form-select" name="permission">
+                    <option value="">全部权限</option>
+                    <option value="管理员" {% if filters.permission == '管理员' %}selected{% endif %}>管理员</option>
+                    <option value="教师" {% if filters.permission == '教师' %}selected{% endif %}>教师</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <div class="d-flex gap-2 align-items-start">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-search"></i> 查询
+                    </button>
+                    <a href="{{ url_for('users') }}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-clockwise"></i> 重置
+                    </a>
+                </div>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -386,4 +430,3 @@ function confirmDeleteUser(id, username, realname) {
 }
 </script>
 {% endblock %}
-
