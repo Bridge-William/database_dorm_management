@@ -1,0 +1,209 @@
+<!--
+  文件名: templates/view_announcement.html
+  说明: 查看通知详情页面
+-->
+{% extends "base.html" %}
+
+{% block title %}通知详情 - 学生公寓管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-megaphone"></i> 通知详情</h2>
+    <div class="btn-group">
+        <a href="{{ url_for('announcements') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> 返回列表
+        </a>
+        {% if session.permission == '管理员' or announcement.publisher_id == session.user_id %}
+        <button class="btn btn-outline-warning"
+                onclick="editAnnouncement({{ announcement.announcement_id }}, '{{ announcement.title }}', '{{ announcement.content }}', '{{ announcement.permission }}')">
+            <i class="bi bi-pencil"></i> 编辑
+        </button>
+        <button class="btn btn-outline-danger"
+                onclick="confirmDeleteAnnouncement({{ announcement.announcement_id }}, '{{ announcement.title }}')">
+            <i class="bi bi-trash"></i> 删除
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 通知详情卡片 -->
+<div class="card shadow-sm">
+    <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">{{ announcement.title }}</h4>
+    </div>
+    <div class="card-body">
+        <!-- 通知元信息 -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-person me-2 text-primary"></i>
+                    <strong>发布人：</strong>
+                    <span class="ms-2">{{ announcement.publisher_name }}</span>
+                </div>
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-clock me-2 text-primary"></i>
+                    <strong>发布时间：</strong>
+                    <span class="ms-2">{{ announcement.created_at.strftime('%Y年%m月%d日 %H:%M:%S') }}</span>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-eye me-2 text-primary"></i>
+                    <strong>阅读权限：</strong>
+                    <span class="ms-2">
+                        {% if announcement.permission == '全部' %}
+                        <span class="badge bg-success">全部</span>
+                        {% elif announcement.permission == '管理员' %}
+                        <span class="badge bg-danger">管理员</span>
+                        {% else %}
+                        <span class="badge bg-primary">教师</span>
+                        {% endif %}
+                    </span>
+                </div>
+                {% if announcement.updated_at != announcement.created_at %}
+                <div class="d-flex align-items-center mb-2">
+                    <i class="bi bi-arrow-clockwise me-2 text-primary"></i>
+                    <strong>最后更新：</strong>
+                    <span class="ms-2">{{ announcement.updated_at.strftime('%Y年%m月%d日 %H:%M:%S') }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <hr>
+
+        <!-- 通知内容 -->
+        <div class="mb-3">
+            <h5 class="mb-3"><i class="bi bi-card-text"></i> 通知内容</h5>
+            <div class="p-3 bg-light rounded" style="white-space: pre-wrap; line-height: 1.6; font-size: 1.05rem;">
+                {{ announcement.content }}
+            </div>
+        </div>
+
+        <!-- 当前用户信息 -->
+        <div class="mt-4 pt-3 border-top">
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i>
+                <strong>当前用户：</strong> {{ session.realname }} ({{ session.permission }})
+                <span class="ms-3">
+                    <strong>查看时间：</strong> {{ now.strftime('%Y年%m月%d日 %H:%M:%S') }}
+                </span>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer bg-light">
+        <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted">
+                通知ID: {{ announcement.announcement_id }}
+            </small>
+            <a href="{{ url_for('announcements') }}" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-list"></i> 查看所有通知
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑通知模态框（与announcements.html中相同） -->
+<div class="modal fade" id="editAnnouncementModal" tabindex="-1" aria-labelledby="editAnnouncementModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editAnnouncementModalLabel">
+                    <i class="bi bi-pencil-square"></i> 编辑通知
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" id="editAnnouncementForm" onsubmit="return validateAnnouncementForm(this)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="editTitle" class="form-label">
+                            标题 <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="editTitle" name="title"
+                               required maxlength="100">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editContent" class="form-label">
+                            内容 <span class="text-danger">*</span>
+                        </label>
+                        <textarea class="form-control" id="editContent" name="content" rows="6" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editPermission" class="form-label">阅读权限</label>
+                        <select class="form-select" id="editPermission" name="permission">
+                            <option value="全部">全部（管理员和教师）</option>
+                            <option value="管理员">仅管理员</option>
+                            <option value="教师">仅教师</option>
+                        </select>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        发布人：<strong>{{ session.realname }}</strong> ({{ session.permission }})
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> 取消
+                    </button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-check-circle"></i> 保存修改
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 从父模板导入当前时间
+const now = new Date();
+
+// 编辑通知
+function editAnnouncement(id, title, content, permission) {
+    document.getElementById('editTitle').value = title;
+    document.getElementById('editContent').value = content;
+    document.getElementById('editPermission').value = permission;
+    document.getElementById('editAnnouncementForm').action = `/announcements/edit/${id}`;
+
+    const modal = new bootstrap.Modal(document.getElementById('editAnnouncementModal'));
+    modal.show();
+}
+
+// 确认删除通知
+function confirmDeleteAnnouncement(id, title) {
+    if (confirm(`确定要删除通知 "${title}" 吗？\n\n此操作不可恢复！`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/announcements/delete/${id}`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// 表单验证
+function validateAnnouncementForm(form) {
+    const title = form.querySelector('[name="title"]').value.trim();
+    const content = form.querySelector('[name="content"]').value.trim();
+
+    if (!title) {
+        alert('请输入通知标题');
+        return false;
+    }
+
+    if (!content) {
+        alert('请输入通知内容');
+        return false;
+    }
+
+    if (title.length > 100) {
+        alert('标题长度不能超过100个字符');
+        return false;
+    }
+
+    return true;
+}
+</script>
+{% endblock %}

@@ -52,6 +52,22 @@
                     <option value="教师" {% if filters.permission == '教师' %}selected{% endif %}>教师</option>
                 </select>
             </div>
+            <div class="col-md-2">
+                <label class="form-label">创建时间从</label>
+                <input type="date" class="form-control" name="created_start" value="{{ filters.created_start }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">到</label>
+                <input type="date" class="form-control" name="created_end" value="{{ filters.created_end }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">更新时间从</label>
+                <input type="date" class="form-control" name="updated_start" value="{{ filters.updated_start }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">到</label>
+                <input type="date" class="form-control" name="updated_end" value="{{ filters.updated_end }}">
+            </div>
             <div class="col-md-4">
                 <div class="d-flex gap-2 align-items-start">
                     <button type="submit" class="btn btn-primary">

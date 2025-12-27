@@ -1,6 +1,6 @@
 <!--
   文件名: templates/user_requests.html
-  说明: 注册申请审批页面 - 添加权限选择功能
+  说明: 注册申请审批页面 - 添加权限选择功能和查询功能
 -->
 {% extends "base.html" %}
 
@@ -22,7 +22,7 @@
         <h6 class="mb-0"><i class="bi bi-filter"></i> 筛选</h6>
     </div>
     <div class="card-body">
-        <div class="btn-group" role="group">
+        <div class="btn-group mb-3" role="group">
             <a href="{{ url_for('user_requests', status='待审批') }}"
                class="btn {% if status_filter == '待审批' %}btn-primary{% else %}btn-outline-primary{% endif %}">
                 <i class="bi bi-clock"></i> 待审批
@@ -40,6 +40,58 @@
                 <i class="bi bi-list"></i> 全部
             </a>
         </div>
+
+        <form method="GET" class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label">申请ID</label>
+                <input type="text" class="form-control" name="request_id" value="{{ filters.request_id }}"
+                       placeholder="申请ID">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">用户名</label>
+                <input type="text" class="form-control" name="username" value="{{ filters.username }}"
+                       placeholder="用户名">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">真实姓名</label>
+                <input type="text" class="form-control" name="realname" value="{{ filters.realname }}"
+                       placeholder="真实姓名">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">申请权限</label>
+                <select class="form-select" name="permission">
+                    <option value="">全部</option>
+                    <option value="管理员" {% if filters.permission == '管理员' %}selected{% endif %}>管理员</option>
+                    <option value="教师" {% if filters.permission == '教师' %}selected{% endif %}>教师</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">邮箱</label>
+                <input type="text" class="form-control" name="email" value="{{ filters.email }}"
+                       placeholder="邮箱">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">手机号</label>
+                <input type="text" class="form-control" name="phone" value="{{ filters.phone }}"
+                       placeholder="手机号">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">申请时间从</label>
+                <input type="date" class="form-control" name="created_start" value="{{ filters.created_start }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">到</label>
+                <input type="date" class="form-control" name="created_end" value="{{ filters.created_end }}">
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-search"></i> 查询
+                </button>
+                <a href="{{ url_for('user_requests') }}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-clockwise"></i> 重置
+                </a>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -52,13 +104,14 @@
                 <thead class="table-light">
                     <tr>
                         <th width="5%">ID</th>
-                        <th width="15%">用户名</th>
-                        <th width="15%">真实姓名</th>
-                        <th width="10%">申请权限</th>
-                        <th width="10%">状态</th>
-                        <th width="20%">申请时间</th>
-                        <th width="15%">联系方式</th>
-                        <th width="10%">操作</th>
+                        <th width="10%">用户名</th>
+                        <th width="10%">真实姓名</th>
+                        <th width="8%">申请权限</th>
+                        <th width="8%">状态</th>
+                        <th width="12%">申请时间</th>
+                        <th width="12%">邮箱</th>
+                        <th width="12%">手机号</th>
+                        <th width="8%">操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -94,10 +147,16 @@
                         </td>
                         <td>
                             {% if req.email %}
-                            <small><i class="bi bi-envelope"></i> {{ req.email }}</small><br>
+                            <small><i class="bi bi-envelope"></i> {{ req.email }}</small>
+                            {% else %}
+                            <small class="text-muted">-</small>
                             {% endif %}
+                        </td>
+                        <td>
                             {% if req.phone %}
                             <small><i class="bi bi-phone"></i> {{ req.phone }}</small>
+                            {% else %}
+                            <small class="text-muted">-</small>
                             {% endif %}
                         </td>
                         <td>

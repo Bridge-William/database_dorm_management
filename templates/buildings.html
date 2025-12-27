@@ -1,6 +1,6 @@
 <!--
   文件名: templates/buildings.html
-  说明: 公寓楼管理页面 - 添加查询功能
+  说明: 公寓楼管理页面 - 增强查询功能
 -->
 
 {% extends "base.html" %}
@@ -20,36 +20,56 @@
 <!-- 搜索栏 -->
 <div class="card mb-3 shadow-sm">
     <div class="card-header bg-light">
-        <h6 class="mb-0"><i class="bi bi-search"></i> 搜索公寓楼</h6>
+        <h6 class="mb-0"><i class="bi bi-search"></i> 公寓楼查询</h6>
     </div>
     <div class="card-body">
         <form method="GET" action="{{ url_for('buildings') }}" class="row g-3 align-items-end">
-            <div class="col-md-9">
-                <input type="text" class="form-control" name="search"
-                       placeholder="输入公寓楼号进行搜索..." value="{{ search }}"
-                       autocomplete="off">
+            <div class="col-md-2">
+                <label class="form-label">公寓楼号</label>
+                <input type="text" class="form-control" name="building_id" value="{{ filters.building_id }}"
+                       placeholder="公寓楼号">
             </div>
-            <div class="col-md-3">
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-search"></i> 搜索
-                    </button>
-                    {% if search %}
-                    <a href="{{ url_for('buildings') }}" class="btn btn-secondary">
-                        <i class="bi bi-arrow-clockwise"></i> 重置
-                    </a>
-                    {% endif %}
-                </div>
+            <div class="col-md-2">
+                <label class="form-label">楼层数</label>
+                <input type="number" class="form-control" name="floors" value="{{ filters.floors }}"
+                       placeholder="楼层数" min="1" max="50">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">规划房间数</label>
+                <input type="number" class="form-control" name="rooms_count" value="{{ filters.rooms_count }}"
+                       placeholder="规划房间数" min="1" max="500">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">实际房间数</label>
+                <input type="number" class="form-control" name="actual_rooms" value="{{ filters.actual_rooms }}"
+                       placeholder="实际房间数" min="0" max="500">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">启用时间</label>
+                <input type="date" class="form-control" name="commission_date" value="{{ filters.commission_date }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">入住学生数</label>
+                <input type="number" class="form-control" name="student_count" value="{{ filters.student_count }}"
+                       placeholder="入住学生数" min="0" max="5000">
+            </div>
+            <div class="col-md-4 d-flex gap-2 align-items-end">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-search"></i> 查询
+                </button>
+                <a href="{{ url_for('buildings') }}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-clockwise"></i> 重置
+                </a>
             </div>
         </form>
     </div>
 </div>
 
 <!-- 统计信息 -->
-{% if search %}
+{% if filters.building_id or filters.floors or filters.rooms_count or filters.actual_rooms or filters.commission_date or filters.student_count %}
 <div class="alert alert-info mb-3">
     <i class="bi bi-info-circle"></i>
-    搜索 "<strong>{{ search }}</strong>" 的结果：共找到 <strong>{{ buildings|length }}</strong> 栋公寓楼
+    查询结果：共找到 <strong>{{ buildings|length }}</strong> 栋公寓楼
 </div>
 {% endif %}
 
@@ -101,13 +121,9 @@
     </div>
     {% else %}
     <div class="col-12">
-        <div class="alert {% if search %}alert-warning{% else %}alert-info{% endif %} text-center">
-            <i class="bi bi-{% if search %}exclamation-triangle{% else %}info-circle{% endif %}"></i>
-            {% if search %}
-                未找到包含 "{{ search }}" 的公寓楼
-            {% else %}
-                暂无公寓楼信息，请点击"添加公寓楼"按钮添加
-            {% endif %}
+        <div class="alert alert-info text-center">
+            <i class="bi bi-info-circle"></i>
+            暂无公寓楼信息，请点击"添加公寓楼"按钮添加
         </div>
     </div>
     {% endfor %}

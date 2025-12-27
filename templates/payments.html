@@ -22,6 +22,11 @@
     <div class="card-body">
         <form method="GET" class="row g-3">
             <div class="col-md-2">
+                <label class="form-label">交费编号</label>
+                <input type="text" class="form-control" name="payment_id" value="{{ filters.payment_id }}"
+                       placeholder="交费编号">
+            </div>
+            <div class="col-md-2">
                 <label class="form-label">学号</label>
                 <input type="text" class="form-control" name="student_id" value="{{ filters.student_id }}"
                        placeholder="学号">
@@ -52,7 +57,7 @@
                        placeholder="寝室">
             </div>
 
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">交费类型</label>
                 <select class="form-select" name="payment_type">
                     <option value="">全部类型</option>
@@ -61,15 +66,15 @@
                     <option value="其他" {% if filters.payment_type == '其他' %}selected{% endif %}>其他</option>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">开始日期</label>
                 <input type="date" class="form-control" name="start_date" value="{{ filters.start_date }}">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">结束日期</label>
                 <input type="date" class="form-control" name="end_date" value="{{ filters.end_date }}">
             </div>
-            <div class="col-md-3 d-flex align-items-end">
+            <div class="col-md-2 d-flex align-items-end">
                 <button type="submit" class="btn btn-primary me-2">
                     <i class="bi bi-search"></i> 查询
                 </button>
@@ -196,7 +201,7 @@
         <nav aria-label="页面导航">
             <ul class="pagination justify-content-center">
                 <li class="page-item {% if page == 1 %}disabled{% endif %}">
-                    <a class="page-link" href="?page={{ page-1 }}&{% for key, value in filters.items() %}{% if value %}{{ key }}={{ value }}&{% endif %}{% endfor %}">
+                    <a class="page-link" href="?page={{ page-1 }}{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">
                         <i class="bi bi-chevron-left"></i> 上一页
                     </a>
                 </li>
@@ -208,7 +213,7 @@
                     </li>
                     {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
                     <li class="page-item">
-                        <a class="page-link" href="?page={{ p }}&{% for key, value in filters.items() %}{% if value %}{{ key }}={{ value }}&{% endif %}{% endfor %}">{{ p }}</a>
+                        <a class="page-link" href="?page={{ p }}{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ p }}</a>
                     </li>
                     {% elif p == 4 or p == total_pages - 3 %}
                     <li class="page-item disabled">
@@ -218,7 +223,7 @@
                 {% endfor %}
 
                 <li class="page-item {% if page == total_pages %}disabled{% endif %}">
-                    <a class="page-link" href="?page={{ page+1 }}&{% for key, value in filters.items() %}{% if value %}{{ key }}={{ value }}&{% endif %}{% endfor %}">
+                    <a class="page-link" href="?page={{ page+1 }}{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">
                         下一页 <i class="bi bi-chevron-right"></i>
                     </a>
                 </li>

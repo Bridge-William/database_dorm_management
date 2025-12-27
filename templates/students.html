@@ -1,6 +1,6 @@
 <!--
   文件名: templates/students.html
-  说明: 学生管理页面 - 完整代码
+  说明: 学生管理页面 - 完整代码（多条件组合查询）
   功能: 学生信息CRUD、搜索、分页、寝室分配
 -->
 {% extends "base.html" %}
@@ -18,26 +18,77 @@
 <!-- 搜索栏 -->
 <div class="card mb-3 shadow-sm">
     <div class="card-header bg-light">
-        <h6 class="mb-0"><i class="bi bi-search"></i> 搜索学生</h6>
+        <h6 class="mb-0"><i class="bi bi-search"></i> 学生查询</h6>
     </div>
     <div class="card-body">
         <form method="GET" action="{{ url_for('students') }}" class="row g-3 align-items-end">
-            <div class="col-md-9">
-                <input type="text" class="form-control" name="search"
-                       placeholder="搜索学号、姓名、民族、专业、班级或联系方式..." value="{{ search }}"
-                       autocomplete="off">
+            <div class="col-md-2">
+                <label class="form-label">学号</label>
+                <input type="text" class="form-control" name="student_id" value="{{ filters.student_id }}"
+                       placeholder="学号">
             </div>
-            <div class="col-md-3">
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-search"></i> 搜索
-                    </button>
-                    {% if search %}
-                    <a href="{{ url_for('students') }}" class="btn btn-secondary">
-                        <i class="bi bi-arrow-clockwise"></i> 重置
-                    </a>
-                    {% endif %}
-                </div>
+            <div class="col-md-2">
+                <label class="form-label">姓名</label>
+                <input type="text" class="form-control" name="name" value="{{ filters.name }}"
+                       placeholder="姓名">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">性别</label>
+                <select class="form-select" name="gender">
+                    <option value="">全部</option>
+                    <option value="男" {% if filters.gender == '男' %}selected{% endif %}>男</option>
+                    <option value="女" {% if filters.gender == '女' %}selected{% endif %}>女</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">民族</label>
+                <input type="text" class="form-control" name="ethnicity" value="{{ filters.ethnicity }}"
+                       placeholder="民族">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">专业</label>
+                <input type="text" class="form-control" name="major" value="{{ filters.major }}"
+                       placeholder="专业">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">班级</label>
+                <input type="text" class="form-control" name="class" value="{{ filters.class }}"
+                       placeholder="班级">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">联系方式</label>
+                <input type="text" class="form-control" name="phone" value="{{ filters.phone }}"
+                       placeholder="联系方式">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">公寓楼</label>
+                <select class="form-select" name="building_id">
+                    <option value="">全部</option>
+                    {% for building in buildings %}
+                    <option value="{{ building.building_id }}" {% if filters.building_id == building.building_id %}selected{% endif %}>
+                        {{ building.building_id }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">寝室</label>
+                <select class="form-select" name="room_id">
+                    <option value="">全部</option>
+                    {% for room in rooms %}
+                    <option value="{{ room.room_id }}" {% if filters.room_id == room.room_id %}selected{% endif %}>
+                        {{ room.room_id }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 d-flex gap-2 align-items-end">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-search"></i> 查询
+                </button>
+                <a href="{{ url_for('students') }}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-clockwise"></i> 重置
+                </a>
             </div>
         </form>
     </div>
@@ -49,22 +100,11 @@
         <div class="card bg-info text-white shadow-sm">
             <div class="card-body text-center">
                 <i class="bi bi-people" style="font-size: 1.5rem;"></i>
-                <h6 class="mt-2">学生总数</h6>
+                <h6 class="mt-2">查询结果</h6>
                 <h4>{{ students|length }}</h4>
             </div>
         </div>
     </div>
-    {% if search %}
-    <div class="col-md-3">
-        <div class="card bg-warning text-white shadow-sm">
-            <div class="card-body text-center">
-                <i class="bi bi-search" style="font-size: 1.5rem;"></i>
-                <h6 class="mt-2">搜索结果</h6>
-                <h4>{{ students|length }}</h4>
-            </div>
-        </div>
-    </div>
-    {% endif %}
 </div>
 
 <!-- 学生列表 -->
@@ -154,13 +194,7 @@
                     <tr>
                         <td colspan="11" class="text-center text-muted py-4">
                             <i class="bi bi-inbox" style="font-size: 2rem;"></i>
-                            <p class="mt-2">
-                                {% if search %}
-                                未找到符合条件的学生
-                                {% else %}
-                                暂无学生信息，请点击"添加学生"按钮添加
-                                {% endif %}
-                            </p>
+                            <p class="mt-2">暂无学生信息</p>
                         </td>
                     </tr>
                     {% endfor %}
@@ -174,7 +208,7 @@
             <ul class="pagination justify-content-center mt-4">
                 <!-- 上一页 -->
                 <li class="page-item {% if page == 1 %}disabled{% endif %}">
-                    <a class="page-link" href="?page={{ page-1 }}&search={{ search }}">
+                    <a class="page-link" href="?page={{ page-1 }}{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">
                         <i class="bi bi-chevron-left"></i> 上一页
                     </a>
                 </li>
@@ -192,7 +226,7 @@
                     {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
                     <!-- 显示的页码 -->
                     <li class="page-item">
-                        <a class="page-link" href="?page={{ p }}&search={{ search }}">{{ p }}</a>
+                        <a class="page-link" href="?page={{ p }}{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ p }}</a>
                     </li>
                     {% elif p == 4 or p == total_pages - 3 %}
                     <!-- 省略号 -->
@@ -204,7 +238,7 @@
 
                 <!-- 下一页 -->
                 <li class="page-item {% if page == total_pages %}disabled{% endif %}">
-                    <a class="page-link" href="?page={{ page+1 }}&search={{ search }}">
+                    <a class="page-link" href="?page={{ page+1 }}{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">
                         下一页 <i class="bi bi-chevron-right"></i>
                     </a>
                 </li>

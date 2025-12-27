@@ -183,11 +183,11 @@ def register():
             password_confirm = request.form.get('password_confirm')
             realname = request.form.get('realname')
             permission = request.form.get('permission', '教师')
-            email = request.form.get('email', '')
+            email = request.form.get('email', '')  # 改为必填
             phone = request.form.get('phone', '')
 
             # 验证输入
-            if not username or not password or not realname:
+            if not username or not password or not realname or not email:  # 邮箱必填
                 flash('请填写必填项', 'danger')
                 return redirect(url_for('register'))
 
@@ -201,7 +201,6 @@ def register():
 
             cur = mysql.connection.cursor()
 
-            # 注意：不再检查用户名是否已存在，允许多个用户使用相同的用户名
             # 检查是否有待审批的同名申请（限制每个用户只有一个待审批申请）
             cur.execute("SELECT username FROM user_requests WHERE username = %s AND status = '待审批'", (username,))
             if cur.fetchone():
@@ -236,34 +235,89 @@ def register():
 @app.route('/user_requests')
 @admin_required
 def user_requests():
-    """查看待审批的注册申请"""
+    """查看待审批的注册申请 - 增加查询功能"""
     status_filter = request.args.get('status', '待审批')
+    request_id = request.args.get('request_id', '')
+    username = request.args.get('username', '')
+    realname = request.args.get('realname', '')
+    permission = request.args.get('permission', '')
+    email = request.args.get('email', '')
+    phone = request.args.get('phone', '')
+    created_start = request.args.get('created_start', '')
+    created_end = request.args.get('created_end', '')
 
     cur = mysql.connection.cursor()
 
-    if status_filter == '全部':
-        cur.execute("""
-            SELECT * FROM user_requests 
-            ORDER BY 
-                CASE status 
-                    WHEN '待审批' THEN 1
-                    WHEN '已批准' THEN 2
-                    WHEN '已拒绝' THEN 3
-                END, created_at DESC
-        """)
-    else:
-        cur.execute("""
-            SELECT * FROM user_requests 
-            WHERE status = %s 
-            ORDER BY created_at DESC
-        """, (status_filter,))
+    # 构建查询条件
+    conditions = []
+    params = []
 
+    if status_filter != '全部':
+        conditions.append("status = %s")
+        params.append(status_filter)
+
+    if request_id:
+        conditions.append("request_id = %s")
+        params.append(request_id)
+
+    if username:
+        conditions.append("username LIKE %s")
+        params.append(f'%{username}%')
+
+    if realname:
+        conditions.append("realname LIKE %s")
+        params.append(f'%{realname}%')
+
+    if permission:
+        conditions.append("permission = %s")
+        params.append(permission)
+
+    if email:
+        conditions.append("email LIKE %s")
+        params.append(f'%{email}%')
+
+    if phone:
+        conditions.append("phone LIKE %s")
+        params.append(f'%{phone}%')
+
+    if created_start:
+        conditions.append("DATE(created_at) >= %s")
+        params.append(created_start)
+
+    if created_end:
+        conditions.append("DATE(created_at) <= %s")
+        params.append(created_end)
+
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+    query = f"""
+        SELECT * FROM user_requests 
+        WHERE {where_clause}
+        ORDER BY 
+            CASE status 
+                WHEN '待审批' THEN 1
+                WHEN '已批准' THEN 2
+                WHEN '已拒绝' THEN 3
+            END, created_at DESC
+    """
+
+    cur.execute(query, params)
     requests_list = cur.fetchall()
     cur.close()
 
     return render_template('user_requests.html',
                            requests=requests_list,
-                           status_filter=status_filter)
+                           status_filter=status_filter,
+                           filters={
+                               'request_id': request_id,
+                               'username': username,
+                               'realname': realname,
+                               'permission': permission,
+                               'email': email,
+                               'phone': phone,
+                               'created_start': created_start,
+                               'created_end': created_end
+                           })
 
 
 @app.route('/user_requests/approve/<int:request_id>', methods=['POST'])
@@ -468,32 +522,70 @@ def dashboard():
 @app.route('/students')
 @login_required
 def students():
-    """学生列表 - 添加民族查询"""
+    """学生列表 - 多条件组合查询"""
     page = request.args.get('page', 1, type=int)
-    search = request.args.get('search', '')
+    student_id = request.args.get('student_id', '')
+    name = request.args.get('name', '')
+    gender = request.args.get('gender', '')
+    ethnicity = request.args.get('ethnicity', '')
+    major = request.args.get('major', '')
+    class_name = request.args.get('class', '')
+    phone = request.args.get('phone', '')
+    building_id = request.args.get('building_id', '')
+    room_id = request.args.get('room_id', '')
     per_page = 15
 
     cur = mysql.connection.cursor()
 
-    if search:
-        cur.execute("""
-            SELECT s.*, 
-                   (SELECT COUNT(*) FROM payments WHERE student_id = s.student_id) as payment_count,
-                   (SELECT SUM(amount) FROM payments WHERE student_id = s.student_id) as total_paid
-            FROM students s
-            WHERE s.student_id LIKE %s OR s.name LIKE %s OR s.major LIKE %s OR s.class LIKE %s OR s.ethnicity LIKE %s
-            OR s.phone LIKE %s
-            ORDER BY s.student_id
-        """, (f'%{search}%', f'%{search}%', f'%{search}%', f'%{search}%', f'%{search}%', f'%{search}%'))
-    else:
-        cur.execute("""
-            SELECT s.*, 
-                   (SELECT COUNT(*) FROM payments WHERE student_id = s.student_id) as payment_count,
-                   (SELECT SUM(amount) FROM payments WHERE student_id = s.student_id) as total_paid
-            FROM students s
-            ORDER BY s.student_id
-        """)
+    # 构建查询条件
+    query = """
+        SELECT s.*, 
+               (SELECT COUNT(*) FROM payments WHERE student_id = s.student_id) as payment_count,
+               (SELECT SUM(amount) FROM payments WHERE student_id = s.student_id) as total_paid
+        FROM students s
+        WHERE 1=1
+    """
+    params = []
 
+    if student_id:
+        query += " AND s.student_id LIKE %s"
+        params.append(f'%{student_id}%')
+
+    if name:
+        query += " AND s.name LIKE %s"
+        params.append(f'%{name}%')
+
+    if gender:
+        query += " AND s.gender = %s"
+        params.append(gender)
+
+    if ethnicity:
+        query += " AND s.ethnicity LIKE %s"
+        params.append(f'%{ethnicity}%')
+
+    if major:
+        query += " AND s.major LIKE %s"
+        params.append(f'%{major}%')
+
+    if class_name:
+        query += " AND s.class LIKE %s"
+        params.append(f'%{class_name}%')
+
+    if phone:
+        query += " AND s.phone LIKE %s"
+        params.append(f'%{phone}%')
+
+    if building_id:
+        query += " AND s.building_id LIKE %s"
+        params.append(f'%{building_id}%')
+
+    if room_id:
+        query += " AND s.room_id LIKE %s"
+        params.append(f'%{room_id}%')
+
+    query += " ORDER BY s.student_id"
+
+    cur.execute(query, params)
     all_students = cur.fetchall()
     total = len(all_students)
 
@@ -517,9 +609,19 @@ def students():
                            students=students_page,
                            page=page,
                            total_pages=total_pages,
-                           search=search,
                            buildings=buildings,
-                           rooms=rooms)
+                           rooms=rooms,
+                           filters={
+                               'student_id': student_id,
+                               'name': name,
+                               'gender': gender,
+                               'ethnicity': ethnicity,
+                               'major': major,
+                               'class': class_name,
+                               'phone': phone,
+                               'building_id': building_id,
+                               'room_id': room_id
+                           })
 
 
 @app.route('/students/add', methods=['POST'])
@@ -647,36 +749,66 @@ def delete_student(student_id):
 @app.route('/buildings')
 @login_required
 def buildings():
-    """公寓楼列表 - 添加搜索功能"""
-    search = request.args.get('search', '')
+    """公寓楼列表 - 增强查询功能"""
+    building_id = request.args.get('building_id', '')
+    floors = request.args.get('floors', '')
+    rooms_count = request.args.get('rooms_count', '')
+    actual_rooms = request.args.get('actual_rooms', '')
+    commission_date = request.args.get('commission_date', '')
+    student_count = request.args.get('student_count', '')
 
     cur = mysql.connection.cursor()
 
-    if search:
-        # 支持按公寓楼号模糊搜索
-        cur.execute("""
-            SELECT b.*,
-                   (SELECT COUNT(*) FROM rooms WHERE building_id = b.building_id) as actual_rooms,
-                   (SELECT COUNT(*) FROM students WHERE building_id = b.building_id) as student_count
-            FROM buildings b
-            WHERE b.building_id LIKE %s
-            ORDER BY b.building_id
-        """, (f'%{search}%',))
-    else:
-        cur.execute("""
-            SELECT b.*,
-                   (SELECT COUNT(*) FROM rooms WHERE building_id = b.building_id) as actual_rooms,
-                   (SELECT COUNT(*) FROM students WHERE building_id = b.building_id) as student_count
-            FROM buildings b
-            ORDER BY b.building_id
-        """)
+    # 构建查询
+    query = """
+        SELECT b.*,
+               (SELECT COUNT(*) FROM rooms WHERE building_id = b.building_id) as actual_rooms,
+               (SELECT COUNT(*) FROM students WHERE building_id = b.building_id) as student_count
+        FROM buildings b
+        WHERE 1=1
+    """
+    params = []
 
+    if building_id:
+        query += " AND b.building_id LIKE %s"
+        params.append(f'%{building_id}%')
+
+    if floors:
+        query += " AND b.floors = %s"
+        params.append(int(floors))
+
+    if rooms_count:
+        query += " AND b.rooms_count = %s"
+        params.append(int(rooms_count))
+
+    if actual_rooms:
+        query += " AND (SELECT COUNT(*) FROM rooms WHERE building_id = b.building_id) = %s"
+        params.append(int(actual_rooms))
+
+    if commission_date:
+        query += " AND DATE(b.commission_date) = %s"
+        params.append(commission_date)
+
+    if student_count:
+        query += " AND (SELECT COUNT(*) FROM students WHERE building_id = b.building_id) = %s"
+        params.append(int(student_count))
+
+    query += " ORDER BY b.building_id"
+
+    cur.execute(query, params)
     buildings_list = cur.fetchall()
     cur.close()
 
     return render_template('buildings.html',
                            buildings=buildings_list,
-                           search=search)
+                           filters={
+                               'building_id': building_id,
+                               'floors': floors,
+                               'rooms_count': rooms_count,
+                               'actual_rooms': actual_rooms,
+                               'commission_date': commission_date,
+                               'student_count': student_count
+                           })
 
 
 @app.route('/buildings/add', methods=['POST'])
@@ -759,6 +891,7 @@ def rooms():
     available_beds_filter = request.args.get('available_beds', '')
     fee_min = request.args.get('fee_min', '')
     fee_max = request.args.get('fee_max', '')
+    phone_filter = request.args.get('phone', '')  # 新增
 
     cur = mysql.connection.cursor()
 
@@ -788,6 +921,10 @@ def rooms():
         query += " AND r.fee <= %s"
         params.append(float(fee_max))
 
+    if phone_filter:  # 新增
+        query += " AND r.phone LIKE %s"
+        params.append(f'%{phone_filter}%')
+
     query += " ORDER BY r.building_id, r.room_id"
 
     cur.execute(query, params)
@@ -812,7 +949,12 @@ def rooms():
     return render_template('rooms.html',
                           rooms=rooms_list,
                           buildings=buildings,
-                          building_filter=building_filter)
+                          building_filter=building_filter,
+                          room_id_filter=room_id_filter,
+                          available_beds_filter=available_beds_filter,
+                          fee_min=fee_min,
+                          fee_max=fee_max,
+                          phone_filter=phone_filter)  # 新增
 
 
 @app.route('/rooms/add', methods=['POST'])
@@ -893,6 +1035,7 @@ def delete_room(room_id):
 def payments():
     """交费记录列表 - 增强查询功能"""
     page = request.args.get('page', 1, type=int)
+    payment_id = request.args.get('payment_id', '')  # 新增
     student_id = request.args.get('student_id', '')
     student_name = request.args.get('student_name', '')
     major = request.args.get('major', '')
@@ -913,6 +1056,10 @@ def payments():
         WHERE 1=1
     """
     params = []
+
+    if payment_id:  # 新增
+        query += " AND p.payment_id = %s"
+        params.append(payment_id)
 
     if student_id:
         query += " AND p.student_id LIKE %s"
@@ -987,6 +1134,7 @@ def payments():
                            buildings=buildings,
                            rooms=rooms,
                            filters={
+                               'payment_id': payment_id,  # 新增
                                'student_id': student_id,
                                'student_name': student_name,
                                'major': major,
@@ -1166,6 +1314,10 @@ def users():
     username = request.args.get('username', '')
     realname = request.args.get('realname', '')
     permission = request.args.get('permission', '')
+    created_start = request.args.get('created_start', '')  # 新增
+    created_end = request.args.get('created_end', '')      # 新增
+    updated_start = request.args.get('updated_start', '')  # 新增
+    updated_end = request.args.get('updated_end', '')      # 新增
 
     cur = mysql.connection.cursor()
 
@@ -1192,6 +1344,22 @@ def users():
         query += " AND permission = %s"
         params.append(permission)
 
+    if created_start:  # 新增
+        query += " AND DATE(created_at) >= %s"
+        params.append(created_start)
+
+    if created_end:    # 新增
+        query += " AND DATE(created_at) <= %s"
+        params.append(created_end)
+
+    if updated_start:  # 新增
+        query += " AND DATE(updated_at) >= %s"
+        params.append(updated_start)
+
+    if updated_end:    # 新增
+        query += " AND DATE(updated_at) <= %s"
+        params.append(updated_end)
+
     query += " ORDER BY user_id"
 
     cur.execute(query, params)
@@ -1214,7 +1382,11 @@ def users():
                                'user_id': user_id,
                                'username': username,
                                'realname': realname,
-                               'permission': permission
+                               'permission': permission,
+                               'created_start': created_start,
+                               'created_end': created_end,
+                               'updated_start': updated_start,
+                               'updated_end': updated_end
                            })
 
 
@@ -1311,6 +1483,229 @@ def delete_user(user_id):
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('users'))
+
+
+# ==================== 通知公告管理 ====================
+
+@app.route('/announcements')
+@login_required
+def announcements():
+    """通知公告列表 - 多条件组合查询"""
+    page = request.args.get('page', 1, type=int)
+    title = request.args.get('title', '')
+    publisher_name = request.args.get('publisher_name', '')
+    content = request.args.get('content', '')
+    permission = request.args.get('permission', '')
+    start_date = request.args.get('start_date', '')
+    end_date = request.args.get('end_date', '')
+    per_page = 10
+
+    cur = mysql.connection.cursor()
+
+    # 构建查询条件
+    query = """
+        SELECT a.*, 
+               CASE 
+                   WHEN a.publisher_id = %s THEN 1
+                   ELSE 0 
+               END as is_owner
+        FROM announcements a
+        WHERE (a.permission = '全部' OR 
+               a.permission = %s OR 
+               %s = '管理员')
+    """
+    params = [session['user_id'], session['permission'], session['permission']]
+
+    if title:
+        query += " AND a.title LIKE %s"
+        params.append(f'%{title}%')
+
+    if publisher_name:
+        query += " AND a.publisher_name LIKE %s"
+        params.append(f'%{publisher_name}%')
+
+    if content:
+        query += " AND a.content LIKE %s"
+        params.append(f'%{content}%')
+
+    if permission and permission != '全部':
+        query += " AND a.permission = %s"
+        params.append(permission)
+
+    if start_date:
+        query += " AND DATE(a.created_at) >= %s"
+        params.append(start_date)
+
+    if end_date:
+        query += " AND DATE(a.created_at) <= %s"
+        params.append(end_date)
+
+    query += " ORDER BY a.created_at DESC, a.announcement_id DESC"
+
+    cur.execute(query, params)
+    all_announcements = cur.fetchall()
+    total = len(all_announcements)
+
+    # 分页
+    start = (page - 1) * per_page
+    end = start + per_page
+    announcements_page = all_announcements[start:end]
+
+    total_pages = (total + per_page - 1) // per_page
+
+    cur.close()
+
+    return render_template('announcements.html',
+                           announcements=announcements_page,
+                           page=page,
+                           total_pages=total_pages,
+                           total=total,
+                           filters={
+                               'title': title,
+                               'publisher_name': publisher_name,
+                               'content': content,
+                               'permission': permission,
+                               'start_date': start_date,
+                               'end_date': end_date
+                           })
+
+
+@app.route('/announcements/add', methods=['POST'])
+@login_required
+def add_announcement():
+    """添加通知公告"""
+    try:
+        title = request.form.get('title')
+        content = request.form.get('content')
+        permission = request.form.get('permission', '全部')
+
+        if not title or not content:
+            flash('请填写标题和内容', 'danger')
+            return redirect(url_for('announcements'))
+
+        cur = mysql.connection.cursor()
+
+        cur.execute("""
+            INSERT INTO announcements (title, content, publisher_id, publisher_name, permission)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (title, content, session['user_id'], session['realname'], permission))
+
+        mysql.connection.commit()
+        cur.close()
+
+        flash('通知发布成功', 'success')
+    except Exception as e:
+        flash(f'发布失败: {str(e)}', 'danger')
+
+    return redirect(url_for('announcements'))
+
+
+@app.route('/announcements/edit/<int:announcement_id>', methods=['POST'])
+@login_required
+def edit_announcement(announcement_id):
+    """编辑通知公告"""
+    try:
+        title = request.form.get('title')
+        content = request.form.get('content')
+        permission = request.form.get('permission', '全部')
+
+        if not title or not content:
+            flash('请填写标题和内容', 'danger')
+            return redirect(url_for('announcements'))
+
+        cur = mysql.connection.cursor()
+
+        # 检查权限：只有管理员或发布者本人可以编辑
+        cur.execute("SELECT publisher_id, permission FROM announcements WHERE announcement_id = %s", (announcement_id,))
+        announcement = cur.fetchone()
+
+        if not announcement:
+            flash('通知不存在', 'danger')
+            cur.close()
+            return redirect(url_for('announcements'))
+
+        if session['permission'] != '管理员' and session['user_id'] != announcement['publisher_id']:
+            flash('没有权限编辑此通知', 'danger')
+            cur.close()
+            return redirect(url_for('announcements'))
+
+        cur.execute("""
+            UPDATE announcements 
+            SET title=%s, content=%s, permission=%s, updated_at=CURRENT_TIMESTAMP
+            WHERE announcement_id=%s
+        """, (title, content, permission, announcement_id))
+
+        mysql.connection.commit()
+        cur.close()
+
+        flash('通知修改成功', 'success')
+    except Exception as e:
+        flash(f'修改失败: {str(e)}', 'danger')
+
+    return redirect(url_for('announcements'))
+
+
+@app.route('/announcements/delete/<int:announcement_id>', methods=['POST'])
+@login_required
+def delete_announcement(announcement_id):
+    """删除通知公告"""
+    try:
+        cur = mysql.connection.cursor()
+
+        # 检查权限：只有管理员或发布者本人可以删除
+        cur.execute("SELECT publisher_id, permission FROM announcements WHERE announcement_id = %s", (announcement_id,))
+        announcement = cur.fetchone()
+
+        if not announcement:
+            flash('通知不存在', 'danger')
+            cur.close()
+            return redirect(url_for('announcements'))
+
+        if session['permission'] != '管理员' and session['user_id'] != announcement['publisher_id']:
+            flash('没有权限删除此通知', 'danger')
+            cur.close()
+            return redirect(url_for('announcements'))
+
+        cur.execute("DELETE FROM announcements WHERE announcement_id = %s", (announcement_id,))
+
+        mysql.connection.commit()
+        cur.close()
+
+        flash('通知删除成功', 'success')
+    except Exception as e:
+        flash(f'删除失败: {str(e)}', 'danger')
+
+    return redirect(url_for('announcements'))
+
+
+@app.route('/announcements/view/<int:announcement_id>')
+@login_required
+def view_announcement(announcement_id):
+    """查看通知详情"""
+    cur = mysql.connection.cursor()
+
+    # 检查是否有权限查看
+    cur.execute("""
+        SELECT a.* 
+        FROM announcements a
+        WHERE a.announcement_id = %s 
+          AND (a.permission = '全部' OR 
+               a.permission = %s OR 
+               %s = '管理员')
+    """, (announcement_id, session['permission'], session['permission']))
+
+    announcement = cur.fetchone()
+    cur.close()
+
+    if not announcement:
+        flash('通知不存在或没有权限查看', 'danger')
+        return redirect(url_for('announcements'))
+
+    # 添加当前时间给模板使用
+    from datetime import datetime
+    now = datetime.now()
+
+    return render_template('view_announcement.html', announcement=announcement, now=now)
 
 
 # ==================== API接口 ====================

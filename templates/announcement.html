@@ -1,0 +1,353 @@
+<!--
+  文件名: templates/announcements.html
+  说明: 公告通知管理页面
+-->
+{% extends "base.html" %}
+
+{% block title %}公告通知 - 学生公寓管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-megaphone"></i> 公告通知</h2>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAnnouncementModal">
+        <i class="bi bi-plus-lg"></i> 发布通知
+    </button>
+</div>
+
+<!-- 查询栏 -->
+<div class="card mb-3 shadow-sm">
+    <div class="card-header bg-light">
+        <h6 class="mb-0"><i class="bi bi-search"></i> 通知查询</h6>
+    </div>
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('announcements') }}" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label">标题</label>
+                <input type="text" class="form-control" name="title" value="{{ filters.title }}"
+                       placeholder="标题">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">发布人</label>
+                <input type="text" class="form-control" name="publisher_name" value="{{ filters.publisher_name }}"
+                       placeholder="发布人">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">发布内容</label>
+                <input type="text" class="form-control" name="content" value="{{ filters.content }}"
+                       placeholder="内容关键词">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">阅读权限</label>
+                <select class="form-select" name="permission">
+                    <option value="">全部</option>
+                    <option value="全部" {% if filters.permission == '全部' %}selected{% endif %}>全部</option>
+                    <option value="管理员" {% if filters.permission == '管理员' %}selected{% endif %}>管理员</option>
+                    <option value="教师" {% if filters.permission == '教师' %}selected{% endif %}>教师</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">发布时间从</label>
+                <input type="date" class="form-control" name="start_date" value="{{ filters.start_date }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">到</label>
+                <input type="date" class="form-control" name="end_date" value="{{ filters.end_date }}">
+            </div>
+            <div class="col-md-4 d-flex gap-2 align-items-end">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-search"></i> 查询
+                </button>
+                <a href="{{ url_for('announcements') }}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-clockwise"></i> 重置
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 统计信息 -->
+<div class="alert alert-info mb-3">
+    <i class="bi bi-info-circle"></i>
+    查询结果：共 <strong>{{ total }}</strong> 条通知公告
+</div>
+
+<!-- 通知列表 -->
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th width="25%">标题</th>
+                        <th width="15%">发布人</th>
+                        <th width="15%">发布时间</th>
+                        <th width="10%">阅读权限</th>
+                        <th width="25%">内容摘要</th>
+                        <th width="10%">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for announcement in announcements %}
+                    <tr {% if announcement.is_owner %}class="table-info"{% endif %}>
+                        <td>
+                            <strong>{{ announcement.title }}</strong>
+                            {% if announcement.is_owner %}
+                            <span class="badge bg-info ms-1">我的</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <i class="bi bi-person"></i> {{ announcement.publisher_name }}
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ announcement.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                        </td>
+                        <td>
+                            {% if announcement.permission == '全部' %}
+                            <span class="badge bg-success">全部</span>
+                            {% elif announcement.permission == '管理员' %}
+                            <span class="badge bg-danger">管理员</span>
+                            {% else %}
+                            <span class="badge bg-primary">教师</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                {{ announcement.content[:50] }}
+                                {% if announcement.content|length > 50 %}...{% endif %}
+                            </small>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <a href="{{ url_for('view_announcement', announcement_id=announcement.announcement_id) }}"
+                                   class="btn btn-outline-primary" title="查看详情">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                {% if session.permission == '管理员' or announcement.is_owner %}
+                                <button class="btn btn-outline-warning"
+                                        onclick="editAnnouncement({{ announcement.announcement_id }}, '{{ announcement.title }}', '{{ announcement.content }}', '{{ announcement.permission }}')"
+                                        title="编辑">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-danger"
+                                        onclick="confirmDeleteAnnouncement({{ announcement.announcement_id }}, '{{ announcement.title }}')"
+                                        title="删除">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">
+                            <i class="bi bi-megaphone" style="font-size: 2rem;"></i>
+                            <p class="mt-2">暂无通知公告</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 分页 -->
+        {% if total_pages > 1 %}
+        <nav aria-label="分页导航">
+            <ul class="pagination justify-content-center mt-4">
+                <!-- 上一页 -->
+                <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                    <a class="page-link" href="?page={{ page-1 }}{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">
+                        <i class="bi bi-chevron-left"></i> 上一页
+                    </a>
+                </li>
+
+                <!-- 页码 -->
+                {% for p in range(1, total_pages + 1) %}
+                    {% if p == page %}
+                    <!-- 当前页 -->
+                    <li class="page-item active">
+                        <span class="page-link">
+                            {{ p }}
+                            <span class="visually-hidden">(当前)</span>
+                        </span>
+                    </li>
+                    {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
+                    <!-- 显示的页码 -->
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ p }}{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">{{ p }}</a>
+                    </li>
+                    {% elif p == 4 or p == total_pages - 3 %}
+                    <!-- 省略号 -->
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+
+                <!-- 下一页 -->
+                <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                    <a class="page-link" href="?page={{ page+1 }}{% for key, value in filters.items() %}{% if value %}&{{ key }}={{ value }}{% endif %}{% endfor %}">
+                        下一页 <i class="bi bi-chevron-right"></i>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 发布通知模态框 -->
+<div class="modal fade" id="addAnnouncementModal" tabindex="-1" aria-labelledby="addAnnouncementModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="addAnnouncementModalLabel">
+                    <i class="bi bi-megaphone"></i> 发布通知
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('add_announcement') }}" onsubmit="return validateAnnouncementForm(this)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="addTitle" class="form-label">
+                            标题 <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="addTitle" name="title"
+                               required maxlength="100" placeholder="请输入通知标题">
+                    </div>
+                    <div class="mb-3">
+                        <label for="addContent" class="form-label">
+                            内容 <span class="text-danger">*</span>
+                        </label>
+                        <textarea class="form-control" id="addContent" name="content" rows="6"
+                                  required placeholder="请输入通知内容"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="addPermission" class="form-label">阅读权限</label>
+                        <select class="form-select" id="addPermission" name="permission">
+                            <option value="全部" selected>全部（管理员和教师）</option>
+                            <option value="管理员">仅管理员</option>
+                            <option value="教师">仅教师</option>
+                        </select>
+                        <div class="form-text">
+                            选择通知的可见范围。选择"全部"则所有管理员和教师都可查看
+                        </div>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        发布人：<strong>{{ session.realname }}</strong> ({{ session.permission }})
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> 取消
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle"></i> 发布
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑通知模态框 -->
+<div class="modal fade" id="editAnnouncementModal" tabindex="-1" aria-labelledby="editAnnouncementModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="editAnnouncementModalLabel">
+                    <i class="bi bi-pencil-square"></i> 编辑通知
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" id="editAnnouncementForm" onsubmit="return validateAnnouncementForm(this)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="editTitle" class="form-label">
+                            标题 <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="editTitle" name="title"
+                               required maxlength="100">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editContent" class="form-label">
+                            内容 <span class="text-danger">*</span>
+                        </label>
+                        <textarea class="form-control" id="editContent" name="content" rows="6" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editPermission" class="form-label">阅读权限</label>
+                        <select class="form-select" id="editPermission" name="permission">
+                            <option value="全部">全部（管理员和教师）</option>
+                            <option value="管理员">仅管理员</option>
+                            <option value="教师">仅教师</option>
+                        </select>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        发布人：<strong>{{ session.realname }}</strong> ({{ session.permission }})
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> 取消
+                    </button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-check-circle"></i> 保存修改
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 编辑通知
+function editAnnouncement(id, title, content, permission) {
+    document.getElementById('editTitle').value = title;
+    document.getElementById('editContent').value = content;
+    document.getElementById('editPermission').value = permission;
+    document.getElementById('editAnnouncementForm').action = `/announcements/edit/${id}`;
+
+    const modal = new bootstrap.Modal(document.getElementById('editAnnouncementModal'));
+    modal.show();
+}
+
+// 确认删除通知
+function confirmDeleteAnnouncement(id, title) {
+    if (confirm(`确定要删除通知 "${title}" 吗？\n\n此操作不可恢复！`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/announcements/delete/${id}`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// 表单验证
+function validateAnnouncementForm(form) {
+    const title = form.querySelector('[name="title"]').value.trim();
+    const content = form.querySelector('[name="content"]').value.trim();
+
+    if (!title) {
+        alert('请输入通知标题');
+        return false;
+    }
+
+    if (!content) {
+        alert('请输入通知内容');
+        return false;
+    }
+
+    if (title.length > 100) {
+        alert('标题长度不能超过100个字符');
+        return false;
+    }
+
+    return true;
+}
+</script>
+{% endblock %}

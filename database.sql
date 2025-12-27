@@ -232,5 +232,33 @@ SELECT
 FROM user_requests 
 GROUP BY status;
 
+-- 7. 通知公告表
+CREATE TABLE announcements (
+    announcement_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '通知ID',
+    title VARCHAR(100) NOT NULL COMMENT '通知标题',
+    content TEXT NOT NULL COMMENT '通知内容',
+    publisher_id VARCHAR(20) NOT NULL COMMENT '发布人ID',
+    publisher_name VARCHAR(50) NOT NULL COMMENT '发布人姓名',
+    permission ENUM('管理员', '教师', '全部') NOT NULL DEFAULT '全部' COMMENT '阅读权限',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '发布时间',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    FOREIGN KEY (publisher_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    INDEX idx_publisher (publisher_id),
+    INDEX idx_permission (permission),
+    INDEX idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知公告表';
+
+-- 插入示例通知数据
+INSERT INTO announcements (title, content, publisher_id, publisher_name, permission, created_at) VALUES
+('新学期住宿费缴纳通知', '各位同学请注意：新学期住宿费缴纳已经开始，请于9月10日前完成缴费，逾期将产生滞纳金。', 'U25010001', '系统管理员', '全部', '2024-09-01 09:00:00'),
+('公寓楼消防安全检查', '根据学校安排，将于9月15日对各公寓楼进行消防安全检查，请各寝室提前做好准备。', 'U25010001', '系统管理员', '全部', '2024-09-02 10:30:00'),
+('教师会议通知', '本周五下午2点在行政楼会议室召开教师工作会议，请各位教师准时参加。', 'U25010001', '系统管理员', '教师', '2024-09-03 14:00:00'),
+('管理员系统培训', '定于9月10日下午3点进行系统管理员操作培训，请各位管理员准时参加。', 'U25010001', '系统管理员', '管理员', '2024-09-03 16:00:00'),
+('节假日宿舍安全提醒', '中秋、国庆假期将至，请各位同学离校前关闭水电、锁好门窗，注意宿舍安全。', 'U25010002', '张老师', '全部', '2024-09-04 11:00:00'),
+('寝室卫生评比通知', '本月寝室卫生评比将于9月20日开始，请各寝室做好清洁工作。', 'U25010003', '李老师', '全部', '2024-09-05 09:30:00');
+
+-- 更新原有数据库创建成功的提示
+SELECT '数据库创建成功！' as message;
+
 -- 数据库创建完成
 SELECT '数据库创建成功！' as message;
