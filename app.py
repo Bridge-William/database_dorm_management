@@ -4,16 +4,88 @@
 日期: 2025
 """
 
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file
 from flask_mysqldb import MySQL
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from datetime import datetime, timedelta
 import hashlib
 import os
+import logging
+from logging.handlers import RotatingFileHandler
+import traceback
+import io
+import time
+import psutil
+import platform
+import shutil
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-in-production'
+
+# ==================== 日志配置 ====================
+
+# 创建logs目录
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# 创建文件处理器，每个日志文件最大10MB，保留5个备份
+file_handler = RotatingFileHandler(
+    'logs/dorm_management.log', 
+    maxBytes=10*1024*1024, 
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.INFO)
+
+# 创建控制台处理器
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# 设置日志格式
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
+
+# 添加处理器到日志器
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# 日志装饰器
+def log_operation(operation_type):
+    """操作日志装饰器"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            try:
+                user_id = session.get('user_id', '未登录')
+                username = session.get('username', '未登录')
+                realname = session.get('realname', '未登录')
+                
+                logger.info(f"开始执行 {operation_type} - 用户ID: {user_id}, 姓名: {realname}, 函数: {f.__name__}")
+                
+                # 执行函数
+                result = f(*args, **kwargs)
+                
+                logger.info(f"成功执行 {operation_type} - 用户ID: {user_id}, 姓名: {realname}")
+                return result
+                
+            except Exception as e:
+                user_id = session.get('user_id', '未登录')
+                logger.error(f"执行 {operation_type} 失败 - 用户ID: {user_id}, 错误: {str(e)}")
+                logger.error(traceback.format_exc())
+                raise
+                
+        return decorated_function
+    return decorator
 
 # MySQL配置
 app.config['MYSQL_HOST'] = 'localhost'
@@ -23,6 +95,9 @@ app.config['MYSQL_DB'] = 'dorm_management'
 app.config['MYSQL_CURSORCLASS'] = 'DictCursor'
 
 mysql = MySQL(app)
+
+# 应用启动时间
+app_start_time = datetime.now()
 
 
 # ==================== 辅助函数 ====================
@@ -123,7 +198,7 @@ def inject_pending_requests_count():
             cur.close()
             return dict(pending_requests_count=pending_count)
         except Exception as e:
-            print(f"Error fetching pending requests count: {e}")
+            logger.error(f"获取待审批申请数量失败: {str(e)}")
             return dict(pending_requests_count=0)
     return dict(pending_requests_count=0)
 
@@ -145,6 +220,8 @@ def login():
         user_id = request.form.get('user_id')
         password = request.form.get('password')
 
+        logger.info(f"登录尝试 - 用户ID: {user_id}")
+
         cur = mysql.connection.cursor()
         cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
         user = cur.fetchone()
@@ -155,18 +232,27 @@ def login():
             session['username'] = user['username']
             session['realname'] = user['realname']
             session['permission'] = user['permission']
+            
+            logger.info(f"登录成功 - 用户ID: {user_id}, 姓名: {user['realname']}, 权限: {user['permission']}")
             flash(f'欢迎回来，{user["realname"]}！', 'success')
             return redirect(url_for('dashboard'))
         else:
+            logger.warning(f"登录失败 - 用户ID: {user_id} 用户名或密码错误")
             flash('用户ID或密码错误', 'danger')
 
     return render_template('login.html')
 
 
 @app.route('/logout')
+@log_operation("用户登出")
 def logout():
     """退出登录"""
+    user_id = session.get('user_id')
+    realname = session.get('realname')
+    
     session.clear()
+    
+    logger.info(f"用户登出 - 用户ID: {user_id}, 姓名: {realname}")
     flash('已退出登录', 'info')
     return redirect(url_for('login'))
 
@@ -183,11 +269,13 @@ def register():
             password_confirm = request.form.get('password_confirm')
             realname = request.form.get('realname')
             permission = request.form.get('permission', '教师')
-            email = request.form.get('email', '')  # 改为必填
+            email = request.form.get('email', '')
             phone = request.form.get('phone', '')
 
+            logger.info(f"注册申请 - 用户名: {username}, 真实姓名: {realname}, 权限申请: {permission}")
+
             # 验证输入
-            if not username or not password or not realname or not email:  # 邮箱必填
+            if not username or not password or not realname or not email:
                 flash('请填写必填项', 'danger')
                 return redirect(url_for('register'))
 
@@ -201,9 +289,10 @@ def register():
 
             cur = mysql.connection.cursor()
 
-            # 检查是否有待审批的同名申请（限制每个用户只有一个待审批申请）
+            # 检查是否有待审批的同名申请
             cur.execute("SELECT username FROM user_requests WHERE username = %s AND status = '待审批'", (username,))
             if cur.fetchone():
+                logger.warning(f"重复注册申请 - 用户名: {username}")
                 flash('您已提交过注册申请，请等待审批结果', 'warning')
                 cur.close()
                 return redirect(url_for('register'))
@@ -220,10 +309,13 @@ def register():
             mysql.connection.commit()
             cur.close()
 
+            logger.info(f"注册申请提交成功 - 用户名: {username}, 真实姓名: {realname}")
             flash('注册申请已提交，请等待管理员审批。审批通过后您将收到通知。', 'success')
             return redirect(url_for('login'))
 
         except Exception as e:
+            logger.error(f"注册申请失败 - 用户名: {username}, 错误: {str(e)}")
+            logger.error(traceback.format_exc())
             flash(f'注册失败: {str(e)}', 'danger')
             return redirect(url_for('register'))
 
@@ -250,6 +342,7 @@ def my_info():
 
 @app.route('/my_info/update', methods=['POST'])
 @login_required
+@log_operation("更新个人信息")
 def update_my_info():
     """更新个人信息"""
     try:
@@ -269,7 +362,7 @@ def update_my_info():
             cur.close()
             return redirect(url_for('my_info'))
 
-        # 验证当前密码（只有教师需要验证，管理员可以直接修改）
+        # 验证当前密码
         if session.get('permission') == '教师':
             if not verify_password(user['password'], current_password):
                 flash('当前密码错误', 'danger')
@@ -301,9 +394,11 @@ def update_my_info():
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"密码更新成功 - 用户ID: {session['user_id']}")
         flash('个人信息更新成功', 'success')
 
     except Exception as e:
+        logger.error(f"密码更新失败 - 用户ID: {session['user_id']}, 错误: {str(e)}")
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('my_info'))
@@ -322,6 +417,8 @@ def forgot_password():
                 flash('请输入用户ID', 'danger')
                 return redirect(url_for('forgot_password'))
 
+            logger.info(f"密码重置请求 - 用户ID: {user_id}")
+
             cur = mysql.connection.cursor()
 
             # 验证用户ID是否存在
@@ -329,6 +426,7 @@ def forgot_password():
             user = cur.fetchone()
 
             if not user:
+                logger.warning(f"密码重置失败 - 用户ID不存在: {user_id}")
                 flash('用户ID不存在', 'danger')
                 cur.close()
                 return redirect(url_for('forgot_password'))
@@ -347,10 +445,12 @@ def forgot_password():
             mysql.connection.commit()
             cur.close()
 
+            logger.info(f"密码重置成功 - 用户ID: {user_id}, 姓名: {user['realname']}")
             flash(f'密码已重置为默认密码: 123456，请尽快登录修改密码', 'success')
             return redirect(url_for('login'))
 
         except Exception as e:
+            logger.error(f"密码重置失败 - 用户ID: {user_id}, 错误: {str(e)}")
             flash(f'重置密码失败: {str(e)}', 'danger')
             return redirect(url_for('forgot_password'))
 
@@ -363,6 +463,7 @@ def forgot_password():
 @admin_required
 def user_requests():
     """查看待审批的注册申请 - 增加查询功能"""
+    logger.info(f"查看注册申请 - 管理员: {session['user_id']}")
     status_filter = request.args.get('status', '待审批')
     request_id = request.args.get('request_id', '')
     username = request.args.get('username', '')
@@ -432,6 +533,7 @@ def user_requests():
     requests_list = cur.fetchall()
     cur.close()
 
+    logger.info(f"查询注册申请结果 - 数量: {len(requests_list)}")
     return render_template('user_requests.html',
                            requests=requests_list,
                            status_filter=status_filter,
@@ -449,6 +551,7 @@ def user_requests():
 
 @app.route('/user_requests/approve/<int:request_id>', methods=['POST'])
 @admin_required
+@log_operation("批准注册申请")
 def approve_user_request(request_id):
     """批准注册申请 - 管理员可以选择授予的权限"""
     try:
@@ -502,9 +605,11 @@ def approve_user_request(request_id):
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"批准注册申请成功 - 申请ID: {request_id}, 新用户ID: {user_id}, 授予权限: {granted_permission}")
         flash(f'已批准用户申请！新用户ID: {user_id}，授予权限: {granted_permission}', 'success')
 
     except Exception as e:
+        logger.error(f"批准注册申请失败 - 申请ID: {request_id}, 错误: {str(e)}")
         flash(f'批准失败: {str(e)}', 'danger')
 
     return redirect(url_for('user_requests'))
@@ -512,6 +617,7 @@ def approve_user_request(request_id):
 
 @app.route('/user_requests/reject/<int:request_id>', methods=['POST'])
 @admin_required
+@log_operation("拒绝注册申请")
 def reject_user_request(request_id):
     """拒绝注册申请"""
     try:
@@ -543,9 +649,11 @@ def reject_user_request(request_id):
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"拒绝注册申请 - 申请ID: {request_id}, 备注: {remark}")
         flash('已拒绝用户申请', 'success')
 
     except Exception as e:
+        logger.error(f"拒绝注册申请失败 - 申请ID: {request_id}, 错误: {str(e)}")
         flash(f'拒绝失败: {str(e)}', 'danger')
 
     return redirect(url_for('user_requests'))
@@ -553,6 +661,7 @@ def reject_user_request(request_id):
 
 @app.route('/user_requests/delete/<int:request_id>', methods=['POST'])
 @admin_required
+@log_operation("删除注册申请")
 def delete_user_request(request_id):
     """删除注册申请"""
     try:
@@ -577,9 +686,11 @@ def delete_user_request(request_id):
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"删除注册申请记录 - 申请ID: {request_id}")
         flash('申请记录已删除', 'success')
 
     except Exception as e:
+        logger.error(f"删除注册申请失败 - 申请ID: {request_id}, 错误: {str(e)}")
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('user_requests'))
@@ -591,6 +702,7 @@ def delete_user_request(request_id):
 @login_required
 def dashboard():
     """仪表板"""
+    logger.info(f"访问仪表板 - 用户: {session['user_id']}")
     cur = mysql.connection.cursor()
 
     # 统计数据
@@ -650,6 +762,7 @@ def dashboard():
 @login_required
 def students():
     """学生列表 - 多条件组合查询"""
+    logger.info(f"查看学生列表 - 用户: {session['user_id']}")
     page = request.args.get('page', 1, type=int)
     student_id = request.args.get('student_id', '')
     name = request.args.get('name', '')
@@ -732,6 +845,7 @@ def students():
 
     cur.close()
 
+    logger.info(f"查询学生列表结果 - 总数: {total}, 当前页: {page}")
     return render_template('students.html',
                            students=students_page,
                            page=page,
@@ -753,6 +867,7 @@ def students():
 
 @app.route('/students/add', methods=['POST'])
 @login_required
+@log_operation("添加学生")
 def add_student():
     """添加学生"""
     try:
@@ -765,6 +880,8 @@ def add_student():
         phone = request.form.get('phone')
         building_id = request.form.get('building_id') or None
         room_id = request.form.get('room_id') or None
+
+        logger.info(f"添加学生 - 学号: {student_id}, 姓名: {name}, 操作者: {session['user_id']}")
 
         cur = mysql.connection.cursor()
 
@@ -798,8 +915,10 @@ def add_student():
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"添加学生成功 - 学号: {student_id}, 姓名: {name}")
         flash('学生信息添加成功', 'success')
     except Exception as e:
+        logger.error(f"添加学生失败 - 学号: {student_id}, 错误: {str(e)}")
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('students'))
@@ -807,6 +926,7 @@ def add_student():
 
 @app.route('/students/edit/<student_id>', methods=['POST'])
 @login_required
+@log_operation("编辑学生")
 def edit_student(student_id):
     """编辑学生"""
     try:
@@ -818,6 +938,8 @@ def edit_student(student_id):
         phone = request.form.get('phone')
         building_id = request.form.get('building_id') or None
         room_id = request.form.get('room_id') or None
+
+        logger.info(f"编辑学生 - 学号: {student_id}, 新姓名: {name}, 操作者: {session['user_id']}")
 
         cur = mysql.connection.cursor()
 
@@ -845,8 +967,10 @@ def edit_student(student_id):
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"编辑学生成功 - 学号: {student_id}")
         flash('学生信息更新成功', 'success')
     except Exception as e:
+        logger.error(f"编辑学生失败 - 学号: {student_id}, 错误: {str(e)}")
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('students'))
@@ -854,16 +978,21 @@ def edit_student(student_id):
 
 @app.route('/students/delete/<student_id>', methods=['POST'])
 @login_required
+@log_operation("删除学生")
 def delete_student(student_id):
     """删除学生"""
     try:
+        logger.info(f"删除学生 - 学号: {student_id}, 操作者: {session['user_id']}")
+        
         cur = mysql.connection.cursor()
         cur.execute("DELETE FROM students WHERE student_id = %s", (student_id,))
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"删除学生成功 - 学号: {student_id}")
         flash('学生信息删除成功', 'success')
     except Exception as e:
+        logger.error(f"删除学生失败 - 学号: {student_id}, 错误: {str(e)}")
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('students'))
@@ -871,12 +1000,11 @@ def delete_student(student_id):
 
 # ==================== 公寓楼管理 ====================
 
-# ==================== 公寓楼管理 ====================
-
 @app.route('/buildings')
 @login_required
 def buildings():
     """公寓楼列表 - 增强查询功能"""
+    logger.info(f"查看公寓楼列表 - 用户: {session['user_id']}")
     building_id = request.args.get('building_id', '')
     floors = request.args.get('floors', '')
     rooms_count = request.args.get('rooms_count', '')
@@ -926,6 +1054,7 @@ def buildings():
     buildings_list = cur.fetchall()
     cur.close()
 
+    logger.info(f"查询公寓楼列表结果 - 数量: {len(buildings_list)}")
     return render_template('buildings.html',
                            buildings=buildings_list,
                            filters={
@@ -940,6 +1069,7 @@ def buildings():
 
 @app.route('/buildings/add', methods=['POST'])
 @login_required
+@log_operation("添加公寓楼")
 def add_building():
     """添加公寓楼"""
     try:
@@ -947,6 +1077,8 @@ def add_building():
         floors = request.form.get('floors', type=int)
         rooms_count = request.form.get('rooms_count', type=int)
         commission_date = request.form.get('commission_date')
+
+        logger.info(f"添加公寓楼 - 楼号: {building_id}, 楼层: {floors}, 房间数: {rooms_count}")
 
         cur = mysql.connection.cursor()
         cur.execute("""
@@ -957,8 +1089,10 @@ def add_building():
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"添加公寓楼成功 - 楼号: {building_id}")
         flash('公寓楼添加成功', 'success')
     except Exception as e:
+        logger.error(f"添加公寓楼失败 - 楼号: {building_id}, 错误: {str(e)}")
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('buildings'))
@@ -966,12 +1100,15 @@ def add_building():
 
 @app.route('/buildings/edit/<building_id>', methods=['POST'])
 @login_required
+@log_operation("编辑公寓楼")
 def edit_building(building_id):
     """编辑公寓楼"""
     try:
         floors = request.form.get('floors', type=int)
         rooms_count = request.form.get('rooms_count', type=int)
         commission_date = request.form.get('commission_date')
+
+        logger.info(f"编辑公寓楼 - 楼号: {building_id}, 新楼层: {floors}, 新房间数: {rooms_count}")
 
         cur = mysql.connection.cursor()
         cur.execute("""
@@ -983,8 +1120,10 @@ def edit_building(building_id):
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"编辑公寓楼成功 - 楼号: {building_id}")
         flash('公寓楼信息更新成功', 'success')
     except Exception as e:
+        logger.error(f"编辑公寓楼失败 - 楼号: {building_id}, 错误: {str(e)}")
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('buildings'))
@@ -992,16 +1131,21 @@ def edit_building(building_id):
 
 @app.route('/buildings/delete/<building_id>', methods=['POST'])
 @login_required
+@log_operation("删除公寓楼")
 def delete_building(building_id):
     """删除公寓楼"""
     try:
+        logger.info(f"删除公寓楼 - 楼号: {building_id}, 操作者: {session['user_id']}")
+        
         cur = mysql.connection.cursor()
         cur.execute("DELETE FROM buildings WHERE building_id = %s", (building_id,))
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"删除公寓楼成功 - 楼号: {building_id}")
         flash('公寓楼删除成功', 'success')
     except Exception as e:
+        logger.error(f"删除公寓楼失败 - 楼号: {building_id}, 错误: {str(e)}")
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('buildings'))
@@ -1013,12 +1157,13 @@ def delete_building(building_id):
 @login_required
 def rooms():
     """寝室列表 - 增加查询功能"""
+    logger.info(f"查看寝室列表 - 用户: {session['user_id']}")
     building_filter = request.args.get('building', '')
     room_id_filter = request.args.get('room_id', '')
     available_beds_filter = request.args.get('available_beds', '')
     fee_min = request.args.get('fee_min', '')
     fee_max = request.args.get('fee_max', '')
-    phone_filter = request.args.get('phone', '')  # 新增
+    phone_filter = request.args.get('phone', '')
 
     cur = mysql.connection.cursor()
 
@@ -1048,7 +1193,7 @@ def rooms():
         query += " AND r.fee <= %s"
         params.append(float(fee_max))
 
-    if phone_filter:  # 新增
+    if phone_filter:
         query += " AND r.phone LIKE %s"
         params.append(f'%{phone_filter}%')
 
@@ -1059,13 +1204,13 @@ def rooms():
 
     # 根据剩余床位筛选
     if available_beds_filter:
-        if available_beds_filter == '0':  # 已满员
+        if available_beds_filter == '0':
             rooms_list = [r for r in rooms_list if r['available_beds'] == 0]
-        elif available_beds_filter == '1':  # 有床位
+        elif available_beds_filter == '1':
             rooms_list = [r for r in rooms_list if r['available_beds'] > 0]
-        elif available_beds_filter == '2':  # 2个以上床位
+        elif available_beds_filter == '2':
             rooms_list = [r for r in rooms_list if r['available_beds'] >= 2]
-        elif available_beds_filter == '4':  # 4个以上床位
+        elif available_beds_filter == '4':
             rooms_list = [r for r in rooms_list if r['available_beds'] >= 4]
 
     cur.execute("SELECT building_id FROM buildings ORDER BY building_id")
@@ -1073,6 +1218,7 @@ def rooms():
 
     cur.close()
 
+    logger.info(f"查询寝室列表结果 - 数量: {len(rooms_list)}")
     return render_template('rooms.html',
                           rooms=rooms_list,
                           buildings=buildings,
@@ -1081,11 +1227,12 @@ def rooms():
                           available_beds_filter=available_beds_filter,
                           fee_min=fee_min,
                           fee_max=fee_max,
-                          phone_filter=phone_filter)  # 新增
+                          phone_filter=phone_filter)
 
 
 @app.route('/rooms/add', methods=['POST'])
 @login_required
+@log_operation("添加寝室")
 def add_room():
     """添加寝室"""
     try:
@@ -1094,6 +1241,8 @@ def add_room():
         capacity = request.form.get('capacity', type=int)
         fee = request.form.get('fee', type=float)
         phone = request.form.get('phone')
+
+        logger.info(f"添加寝室 - 寝室号: {room_id}, 楼号: {building_id}, 容量: {capacity}, 费用: {fee}")
 
         cur = mysql.connection.cursor()
         cur.execute("""
@@ -1104,8 +1253,10 @@ def add_room():
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"添加寝室成功 - 寝室号: {room_id}")
         flash('寝室添加成功', 'success')
     except Exception as e:
+        logger.error(f"添加寝室失败 - 寝室号: {room_id}, 错误: {str(e)}")
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('rooms'))
@@ -1113,6 +1264,7 @@ def add_room():
 
 @app.route('/rooms/edit/<room_id>', methods=['POST'])
 @login_required
+@log_operation("编辑寝室")
 def edit_room(room_id):
     """编辑寝室"""
     try:
@@ -1120,6 +1272,8 @@ def edit_room(room_id):
         capacity = request.form.get('capacity', type=int)
         fee = request.form.get('fee', type=float)
         phone = request.form.get('phone')
+
+        logger.info(f"编辑寝室 - 寝室号: {room_id}, 新楼号: {building_id}, 新容量: {capacity}, 新费用: {fee}")
 
         cur = mysql.connection.cursor()
         cur.execute("""
@@ -1131,8 +1285,10 @@ def edit_room(room_id):
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"编辑寝室成功 - 寝室号: {room_id}")
         flash('寝室信息更新成功', 'success')
     except Exception as e:
+        logger.error(f"编辑寝室失败 - 寝室号: {room_id}, 错误: {str(e)}")
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('rooms'))
@@ -1140,16 +1296,21 @@ def edit_room(room_id):
 
 @app.route('/rooms/delete/<room_id>', methods=['POST'])
 @login_required
+@log_operation("删除寝室")
 def delete_room(room_id):
     """删除寝室"""
     try:
+        logger.info(f"删除寝室 - 寝室号: {room_id}, 操作者: {session['user_id']}")
+        
         cur = mysql.connection.cursor()
         cur.execute("DELETE FROM rooms WHERE room_id = %s", (room_id,))
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"删除寝室成功 - 寝室号: {room_id}")
         flash('寝室删除成功', 'success')
     except Exception as e:
+        logger.error(f"删除寝室失败 - 寝室号: {room_id}, 错误: {str(e)}")
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('rooms'))
@@ -1161,8 +1322,9 @@ def delete_room(room_id):
 @login_required
 def payments():
     """交费记录列表 - 增强查询功能"""
+    logger.info(f"查看交费记录 - 用户: {session['user_id']}")
     page = request.args.get('page', 1, type=int)
-    payment_id = request.args.get('payment_id', '')  # 新增
+    payment_id = request.args.get('payment_id', '')
     student_id = request.args.get('student_id', '')
     student_name = request.args.get('student_name', '')
     major = request.args.get('major', '')
@@ -1184,7 +1346,7 @@ def payments():
     """
     params = []
 
-    if payment_id:  # 新增
+    if payment_id:
         query += " AND p.payment_id = %s"
         params.append(payment_id)
 
@@ -1252,6 +1414,7 @@ def payments():
 
     cur.close()
 
+    logger.info(f"查询交费记录结果 - 总数: {total}, 总金额: {total_amount}")
     return render_template('payments.html',
                            payments=payments_page,
                            page=page,
@@ -1261,7 +1424,7 @@ def payments():
                            buildings=buildings,
                            rooms=rooms,
                            filters={
-                               'payment_id': payment_id,  # 新增
+                               'payment_id': payment_id,
                                'student_id': student_id,
                                'student_name': student_name,
                                'major': major,
@@ -1276,6 +1439,7 @@ def payments():
 
 @app.route('/payments/add', methods=['POST'])
 @login_required
+@log_operation("添加交费记录")
 def add_payment():
     """添加交费记录"""
     try:
@@ -1284,6 +1448,8 @@ def add_payment():
         payment_type = request.form.get('payment_type')
         amount = request.form.get('amount', type=float)
         remark = request.form.get('remark', '')
+
+        logger.info(f"添加交费记录 - 学号: {student_id}, 类型: {payment_type}, 金额: {amount}")
 
         cur = mysql.connection.cursor()
 
@@ -1304,8 +1470,10 @@ def add_payment():
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"添加交费记录成功 - 学号: {student_id}, 金额: {amount}")
         flash('交费记录添加成功', 'success')
     except Exception as e:
+        logger.error(f"添加交费记录失败 - 学号: {student_id}, 错误: {str(e)}")
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('payments'))
@@ -1313,6 +1481,7 @@ def add_payment():
 
 @app.route('/payments/edit/<int:payment_id>', methods=['POST'])
 @login_required
+@log_operation("修改交费记录")
 def edit_payment(payment_id):
     """修改交费记录"""
     try:
@@ -1320,6 +1489,8 @@ def edit_payment(payment_id):
         payment_type = request.form.get('payment_type')
         amount = request.form.get('amount', type=float)
         remark = request.form.get('remark', '')
+
+        logger.info(f"修改交费记录 - 记录ID: {payment_id}, 新金额: {amount}")
 
         cur = mysql.connection.cursor()
 
@@ -1332,8 +1503,10 @@ def edit_payment(payment_id):
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"修改交费记录成功 - 记录ID: {payment_id}")
         flash('交费记录修改成功', 'success')
     except Exception as e:
+        logger.error(f"修改交费记录失败 - 记录ID: {payment_id}, 错误: {str(e)}")
         flash(f'修改失败: {str(e)}', 'danger')
 
     return redirect(url_for('payments'))
@@ -1341,16 +1514,21 @@ def edit_payment(payment_id):
 
 @app.route('/payments/delete/<int:payment_id>', methods=['POST'])
 @login_required
+@log_operation("删除交费记录")
 def delete_payment(payment_id):
     """删除交费记录"""
     try:
+        logger.info(f"删除交费记录 - 记录ID: {payment_id}, 操作者: {session['user_id']}")
+        
         cur = mysql.connection.cursor()
         cur.execute("DELETE FROM payments WHERE payment_id = %s", (payment_id,))
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"删除交费记录成功 - 记录ID: {payment_id}")
         flash('交费记录删除成功', 'success')
     except Exception as e:
+        logger.error(f"删除交费记录失败 - 记录ID: {payment_id}, 错误: {str(e)}")
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('payments'))
@@ -1362,6 +1540,7 @@ def delete_payment(payment_id):
 @login_required
 def reports():
     """统计报表"""
+    logger.info(f"查看统计报表 - 用户: {session['user_id']}")
     cur = mysql.connection.cursor()
 
     # 月度统计
@@ -1424,6 +1603,7 @@ def reports():
 
     cur.close()
 
+    logger.info(f"统计报表查询完成 - 月度统计: {len(monthly_stats)}条")
     return render_template('reports.html',
                            monthly_stats=monthly_stats,
                            building_stats=building_stats,
@@ -1437,14 +1617,15 @@ def reports():
 @admin_required
 def users():
     """用户管理 - 添加查询功能"""
+    logger.info(f"查看用户列表 - 管理员: {session['user_id']}")
     user_id = request.args.get('user_id', '')
     username = request.args.get('username', '')
     realname = request.args.get('realname', '')
     permission = request.args.get('permission', '')
-    created_start = request.args.get('created_start', '')  # 新增
-    created_end = request.args.get('created_end', '')      # 新增
-    updated_start = request.args.get('updated_start', '')  # 新增
-    updated_end = request.args.get('updated_end', '')      # 新增
+    created_start = request.args.get('created_start', '')
+    created_end = request.args.get('created_end', '')
+    updated_start = request.args.get('updated_start', '')
+    updated_end = request.args.get('updated_end', '')
 
     cur = mysql.connection.cursor()
 
@@ -1471,19 +1652,19 @@ def users():
         query += " AND permission = %s"
         params.append(permission)
 
-    if created_start:  # 新增
+    if created_start:
         query += " AND DATE(created_at) >= %s"
         params.append(created_start)
 
-    if created_end:    # 新增
+    if created_end:
         query += " AND DATE(created_at) <= %s"
         params.append(created_end)
 
-    if updated_start:  # 新增
+    if updated_start:
         query += " AND DATE(updated_at) >= %s"
         params.append(updated_start)
 
-    if updated_end:    # 新增
+    if updated_end:
         query += " AND DATE(updated_at) <= %s"
         params.append(updated_end)
 
@@ -1501,6 +1682,7 @@ def users():
     # 生成下一个用户ID用于前端显示
     next_user_id = generate_next_user_id()
 
+    logger.info(f"用户列表查询结果 - 数量: {len(users_list)}")
     return render_template('users.html',
                            users=users_list,
                            next_user_id=next_user_id,
@@ -1519,6 +1701,7 @@ def users():
 
 @app.route('/users/add', methods=['POST'])
 @admin_required
+@log_operation("添加用户")
 def add_user():
     """添加用户"""
     try:
@@ -1527,6 +1710,8 @@ def add_user():
         password = request.form.get('password')
         realname = request.form.get('realname')
         permission = request.form.get('permission')
+
+        logger.info(f"添加用户 - 用户名: {username}, 真实姓名: {realname}, 权限: {permission}")
 
         if not username or not password or not realname:
             flash('请填写完整信息', 'danger')
@@ -1549,8 +1734,10 @@ def add_user():
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"添加用户成功 - 用户ID: {user_id}, 用户名: {username}")
         flash(f'用户添加成功！用户ID: {user_id}，请告知用户使用此ID登录', 'success')
     except Exception as e:
+        logger.error(f"添加用户失败 - 用户名: {username}, 错误: {str(e)}")
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('users'))
@@ -1558,12 +1745,15 @@ def add_user():
 
 @app.route('/users/edit/<user_id>', methods=['POST'])
 @admin_required
+@log_operation("编辑用户")
 def edit_user(user_id):
     """编辑用户"""
     try:
         realname = request.form.get('realname')
         permission = request.form.get('permission')
         password = request.form.get('password')
+
+        logger.info(f"编辑用户 - 用户ID: {user_id}, 新真实姓名: {realname}, 新权限: {permission}")
 
         cur = mysql.connection.cursor()
 
@@ -1584,8 +1774,10 @@ def edit_user(user_id):
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"编辑用户成功 - 用户ID: {user_id}")
         flash('用户信息更新成功', 'success')
     except Exception as e:
+        logger.error(f"编辑用户失败 - 用户ID: {user_id}, 错误: {str(e)}")
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('users'))
@@ -1593,20 +1785,26 @@ def edit_user(user_id):
 
 @app.route('/users/delete/<user_id>', methods=['POST'])
 @admin_required
+@log_operation("删除用户")
 def delete_user(user_id):
     """删除用户"""
     if user_id == session.get('user_id'):
+        logger.warning(f"尝试删除当前登录用户 - 用户ID: {user_id}")
         flash('不能删除当前登录用户', 'danger')
         return redirect(url_for('users'))
 
     try:
+        logger.info(f"删除用户 - 用户ID: {user_id}, 操作者: {session['user_id']}")
+        
         cur = mysql.connection.cursor()
         cur.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"删除用户成功 - 用户ID: {user_id}")
         flash('用户删除成功', 'success')
     except Exception as e:
+        logger.error(f"删除用户失败 - 用户ID: {user_id}, 错误: {str(e)}")
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('users'))
@@ -1618,6 +1816,7 @@ def delete_user(user_id):
 @login_required
 def announcements():
     """通知公告列表 - 多条件组合查询"""
+    logger.info(f"查看通知公告 - 用户: {session['user_id']}")
     page = request.args.get('page', 1, type=int)
     title = request.args.get('title', '')
     publisher_name = request.args.get('publisher_name', '')
@@ -1682,6 +1881,7 @@ def announcements():
 
     cur.close()
 
+    logger.info(f"查询通知公告结果 - 总数: {total}")
     return render_template('announcements.html',
                            announcements=announcements_page,
                            page=page,
@@ -1699,12 +1899,15 @@ def announcements():
 
 @app.route('/announcements/add', methods=['POST'])
 @login_required
+@log_operation("添加通知公告")
 def add_announcement():
     """添加通知公告"""
     try:
         title = request.form.get('title')
         content = request.form.get('content')
         permission = request.form.get('permission', '全部')
+
+        logger.info(f"添加通知公告 - 标题: {title}, 发布者: {session['realname']}")
 
         if not title or not content:
             flash('请填写标题和内容', 'danger')
@@ -1720,8 +1923,10 @@ def add_announcement():
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"添加通知公告成功 - 标题: {title}")
         flash('通知发布成功', 'success')
     except Exception as e:
+        logger.error(f"添加通知公告失败 - 标题: {title}, 错误: {str(e)}")
         flash(f'发布失败: {str(e)}', 'danger')
 
     return redirect(url_for('announcements'))
@@ -1729,12 +1934,15 @@ def add_announcement():
 
 @app.route('/announcements/edit/<int:announcement_id>', methods=['POST'])
 @login_required
+@log_operation("编辑通知公告")
 def edit_announcement(announcement_id):
     """编辑通知公告"""
     try:
         title = request.form.get('title')
         content = request.form.get('content')
         permission = request.form.get('permission', '全部')
+
+        logger.info(f"编辑通知公告 - ID: {announcement_id}, 新标题: {title}")
 
         if not title or not content:
             flash('请填写标题和内容', 'danger')
@@ -1765,8 +1973,10 @@ def edit_announcement(announcement_id):
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"编辑通知公告成功 - ID: {announcement_id}")
         flash('通知修改成功', 'success')
     except Exception as e:
+        logger.error(f"编辑通知公告失败 - ID: {announcement_id}, 错误: {str(e)}")
         flash(f'修改失败: {str(e)}', 'danger')
 
     return redirect(url_for('announcements'))
@@ -1774,9 +1984,12 @@ def edit_announcement(announcement_id):
 
 @app.route('/announcements/delete/<int:announcement_id>', methods=['POST'])
 @login_required
+@log_operation("删除通知公告")
 def delete_announcement(announcement_id):
     """删除通知公告"""
     try:
+        logger.info(f"删除通知公告 - ID: {announcement_id}, 操作者: {session['user_id']}")
+        
         cur = mysql.connection.cursor()
 
         # 检查权限：只有管理员或发布者本人可以删除
@@ -1798,8 +2011,10 @@ def delete_announcement(announcement_id):
         mysql.connection.commit()
         cur.close()
 
+        logger.info(f"删除通知公告成功 - ID: {announcement_id}")
         flash('通知删除成功', 'success')
     except Exception as e:
+        logger.error(f"删除通知公告失败 - ID: {announcement_id}, 错误: {str(e)}")
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('announcements'))
@@ -1809,6 +2024,8 @@ def delete_announcement(announcement_id):
 @login_required
 def view_announcement(announcement_id):
     """查看通知详情"""
+    logger.info(f"查看通知详情 - ID: {announcement_id}, 用户: {session['user_id']}")
+    
     cur = mysql.connection.cursor()
 
     # 检查是否有权限查看
@@ -1825,6 +2042,7 @@ def view_announcement(announcement_id):
     cur.close()
 
     if not announcement:
+        logger.warning(f"查看通知详情失败 - 无权限或不存在, ID: {announcement_id}")
         flash('通知不存在或没有权限查看', 'danger')
         return redirect(url_for('announcements'))
 
@@ -1841,6 +2059,7 @@ def view_announcement(announcement_id):
 @login_required
 def api_get_rooms(building_id):
     """获取指定楼栋的房间"""
+    logger.info(f"API获取房间列表 - 楼号: {building_id}")
     cur = mysql.connection.cursor()
     cur.execute("SELECT room_id, capacity, fee FROM rooms WHERE building_id = %s ORDER BY room_id", (building_id,))
     rooms = cur.fetchall()
@@ -1852,6 +2071,7 @@ def api_get_rooms(building_id):
 @login_required
 def api_get_student(student_id):
     """获取学生信息"""
+    logger.info(f"API获取学生信息 - 学号: {student_id}")
     cur = mysql.connection.cursor()
     cur.execute("SELECT * FROM students WHERE student_id = %s", (student_id,))
     student = cur.fetchone()
@@ -1861,5 +2081,400 @@ def api_get_student(student_id):
     return jsonify({'error': 'Student not found'}), 404
 
 
+# ==================== 日志管理功能 ====================
+
+@app.route('/logs')
+@admin_required
+def logs():
+    """日志查看页面"""
+    logger.info(f"访问日志页面 - 管理员: {session['user_id']}")
+    return render_template('logs.html')
+
+
+@app.route('/api/logs')
+@admin_required
+def api_get_logs():
+    """获取日志数据API"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 50, type=int)
+        level = request.args.get('level', '')
+        user_id = request.args.get('userId', '')
+        operation = request.args.get('operation', '')
+        keyword = request.args.get('keyword', '')
+        start_time = request.args.get('start', '')
+        end_time = request.args.get('end', '')
+        
+        # 读取日志文件
+        log_file = 'logs/dorm_management.log'
+        if not os.path.exists(log_file):
+            return jsonify({
+                'success': True,
+                'logs': [],
+                'stats': {'total': 0, 'info': 0, 'warning': 0, 'error': 0}
+            })
+        
+        with open(log_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # 反转日志行（最新的在前面）
+        lines.reverse()
+        
+        # 解析和过滤日志
+        parsed_logs = []
+        stats = {'total': 0, 'info': 0, 'warning': 0, 'error': 0}
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # 解析日志行格式: 时间 - 模块名 - 级别 - 消息
+            parts = line.split(' - ', 3)
+            if len(parts) < 4:
+                continue
+                
+            log_time, module, log_level, message = parts
+            
+            # 应用筛选条件
+            if level and log_level != level:
+                continue
+                
+            if user_id and user_id not in message:
+                continue
+                
+            if operation and operation not in message:
+                continue
+                
+            if keyword and keyword.lower() not in message.lower():
+                continue
+                
+            if start_time and log_time < start_time:
+                continue
+                
+            if end_time and log_time > end_time:
+                continue
+            
+            # 统计
+            stats['total'] += 1
+            if log_level == 'INFO':
+                stats['info'] += 1
+            elif log_level == 'WARNING':
+                stats['warning'] += 1
+            elif log_level == 'ERROR':
+                stats['error'] += 1
+            
+            parsed_logs.append({
+                'time': log_time,
+                'module': module,
+                'level': log_level,
+                'message': message
+            })
+        
+        # 分页
+        start = (page - 1) * limit
+        end = start + limit
+        paginated_logs = parsed_logs[start:end]
+        
+        return jsonify({
+            'success': True,
+            'logs': paginated_logs,
+            'stats': stats,
+            'total': len(parsed_logs),
+            'page': page,
+            'limit': limit
+        })
+        
+    except Exception as e:
+        logger.error(f"获取日志数据失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/logs/clear', methods=['POST'])
+@admin_required
+@log_operation("清空日志文件")
+def api_clear_logs():
+    """清空日志文件API"""
+    try:
+        log_file = 'logs/dorm_management.log'
+        
+        # 创建备份
+        if os.path.exists(log_file):
+            backup_file = f'logs/dorm_management.log.backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+            shutil.copy2(log_file, backup_file)
+        
+        # 清空日志文件
+        with open(log_file, 'w', encoding='utf-8') as f:
+            f.write('')
+        
+        # 记录清空操作
+        logger.info(f"日志文件已清空 - 操作者: {session['user_id']}")
+        
+        return jsonify({
+            'success': True,
+            'message': '日志已清空'
+        })
+        
+    except Exception as e:
+        logger.error(f"清空日志文件失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/logs/download')
+@admin_required
+@log_operation("下载日志文件")
+def api_download_logs():
+    """下载日志文件API"""
+    try:
+        log_file = 'logs/dorm_management.log'
+        
+        if not os.path.exists(log_file):
+            return jsonify({
+                'success': False,
+                'message': '日志文件不存在'
+            }), 404
+        
+        # 记录下载操作
+        logger.info(f"日志文件已下载 - 操作者: {session['user_id']}")
+        
+        return send_file(
+            log_file,
+            as_attachment=True,
+            download_name=f'dorm_management_log_{datetime.now().strftime("%Y%m%d")}.log',
+            mimetype='text/plain'
+        )
+        
+    except Exception as e:
+        logger.error(f"下载日志文件失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+
+# ==================== 系统状态监控功能 ====================
+
+@app.route('/system/status')
+@admin_required
+def system_status():
+    """系统状态监控页面"""
+    logger.info(f"访问系统状态页面 - 管理员: {session['user_id']}")
+    return render_template('system_status.html')
+
+
+@app.route('/api/system/status')
+@admin_required
+def api_system_status():
+    """获取系统状态API"""
+    try:
+        # 获取系统信息
+        cpu_percent = psutil.cpu_percent(interval=1)
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        
+        # 获取进程运行时间
+        process = psutil.Process()
+        uptime = int(time.time() - process.create_time())
+        
+        # 获取数据库状态
+        db_status = "正常"
+        try:
+            cur = mysql.connection.cursor()
+            cur.execute("SELECT 1")
+            cur.close()
+        except Exception as e:
+            db_status = f"异常: {str(e)}"
+        
+        # 获取日志文件大小
+        log_size = "0 MB"
+        log_file = 'logs/dorm_management.log'
+        if os.path.exists(log_file):
+            size_bytes = os.path.getsize(log_file)
+            size_mb = size_bytes / (1024 * 1024)
+            log_size = f"{size_mb:.2f} MB"
+        
+        # 获取在线用户数（简化处理）
+        online_users = 1  # 当前用户
+        
+        # 构建系统警告
+        warnings = []
+        
+        if cpu_percent > 80:
+            warnings.append({
+                'level': 'WARNING',
+                'title': 'CPU使用率过高',
+                'message': f'CPU使用率达到 {cpu_percent}%，请检查系统负载',
+                'time': datetime.now().strftime('%H:%M:%S')
+            })
+        
+        if memory.percent > 80:
+            warnings.append({
+                'level': 'WARNING',
+                'title': '内存使用率过高',
+                'message': f'内存使用率达到 {memory.percent}%，可用内存: {memory.available/(1024*1024*1024):.2f} GB',
+                'time': datetime.now().strftime('%H:%M:%S')
+            })
+        
+        if disk.percent > 85:
+            warnings.append({
+                'level': 'WARNING',
+                'title': '磁盘空间不足',
+                'message': f'磁盘使用率达到 {disk.percent}%，可用空间: {disk.free/(1024*1024*1024):.2f} GB',
+                'time': datetime.now().strftime('%H:%M:%S')
+            })
+        
+        # 模拟最近活动
+        recent_activities = [
+            {
+                'user': session.get('realname', '管理员'),
+                'action': '查看系统状态',
+                'type': '访问',
+                'time': datetime.now().strftime('%H:%M:%S')
+            }
+        ]
+        
+        # 模拟数据库性能
+        database_performance = {
+            'query_count': 156,
+            'avg_response_time': 12.5,
+            'error_count': 3
+        }
+        
+        # 模拟性能数据
+        performance_data = {
+            'labels': ['10:00', '10:15', '10:30', '10:45', '11:00', '11:15'],
+            'cpu': [cpu_percent, cpu_percent * 0.9, cpu_percent * 0.8, cpu_percent * 1.1, cpu_percent, cpu_percent * 0.7],
+            'memory': [memory.percent, memory.percent * 0.95, memory.percent * 0.9, memory.percent * 1.05, memory.percent, memory.percent * 0.85]
+        }
+        
+        return jsonify({
+            'success': True,
+            'uptime': uptime,
+            'database_status': db_status,
+            'log_size': log_size,
+            'online_users': online_users,
+            'server_status': {
+                'cpuUsage': cpu_percent,
+                'memoryUsage': memory.percent,
+                'memoryTotal': memory.total,
+                'memoryAvailable': memory.available,
+                'diskUsage': disk.percent,
+                'diskFree': disk.free,
+                'system': platform.system(),
+                'pythonVersion': platform.python_version()
+            },
+            'warnings': warnings,
+            'recent_activities': recent_activities,
+            'database_performance': database_performance,
+            'performance_data': performance_data
+        })
+        
+    except Exception as e:
+        logger.error(f"获取系统状态失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/system/status/report')
+@admin_required
+@log_operation("下载系统状态报告")
+def api_system_status_report():
+    """下载系统状态报告"""
+    try:
+        # 收集系统信息
+        status_data = api_system_status().get_json()
+        
+        # 创建报告内容
+        report_lines = []
+        report_lines.append("=" * 60)
+        report_lines.append("学生公寓管理系统 - 系统状态报告")
+        report_lines.append(f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        report_lines.append("=" * 60)
+        
+        if status_data['success']:
+            report_lines.append(f"\n系统运行时间: {format_uptime(status_data['uptime'])}")
+            report_lines.append(f"数据库状态: {status_data['database_status']}")
+            report_lines.append(f"日志文件大小: {status_data['log_size']}")
+            report_lines.append(f"在线用户数: {status_data['online_users']}")
+            
+            report_lines.append("\n服务器状态:")
+            for key, value in status_data['server_status'].items():
+                report_lines.append(f"  {key}: {value}")
+            
+            if status_data['warnings']:
+                report_lines.append("\n系统警告:")
+                for warning in status_data['warnings']:
+                    report_lines.append(f"  [{warning['level']}] {warning['title']}: {warning['message']}")
+            
+            report_lines.append("\n数据库性能:")
+            report_lines.append(f"  查询次数: {status_data['database_performance']['query_count']}")
+            report_lines.append(f"  平均响应时间: {status_data['database_performance']['avg_response_time']} ms")
+            report_lines.append(f"  错误查询数: {status_data['database_performance']['error_count']}")
+        
+        report_content = "\n".join(report_lines)
+        
+        # 创建内存文件并返回
+        report_file = io.BytesIO(report_content.encode('utf-8'))
+        
+        logger.info(f"下载系统状态报告 - 操作者: {session['user_id']}")
+        
+        return send_file(
+            report_file,
+            as_attachment=True,
+            download_name=f'system_status_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt',
+            mimetype='text/plain'
+        )
+        
+    except Exception as e:
+        logger.error(f"生成系统状态报告失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+
+def format_uptime(seconds):
+    """格式化运行时间"""
+    days = seconds // 86400
+    hours = (seconds % 86400) // 3600
+    minutes = (seconds % 3600) // 60
+    
+    if days > 0:
+        return f"{days}天{hours}小时"
+    elif hours > 0:
+        return f"{hours}小时{minutes}分钟"
+    else:
+        return f"{minutes}分钟"
+
+
+# ==================== 应用启动 ====================
+
 if __name__ == '__main__':
+    # 记录应用启动
+    logger.info("=" * 50)
+    logger.info("学生公寓交费管理系统启动")
+    logger.info(f"启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"日志目录: {os.path.abspath('logs')}")
+    logger.info(f"数据库配置: {app.config['MYSQL_DB']}@{app.config['MYSQL_HOST']}")
+    logger.info("=" * 50)
+    
+    # 创建必要的模板文件
+    try:
+        # 检查是否缺少必要的模板文件
+        required_templates = ['logs.html', 'system_status.html']
+        for template in required_templates:
+            template_path = os.path.join('templates', template)
+            if not os.path.exists(template_path):
+                logger.warning(f"缺少模板文件: {template}，请确保已创建")
+    except Exception as e:
+        logger.error(f"检查模板文件失败: {str(e)}")
+    
     app.run(debug=True, host='0.0.0.0', port=5000)

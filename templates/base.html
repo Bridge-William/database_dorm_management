@@ -61,6 +61,13 @@
         #studentIdSuggestions .dropdown-item:last-child {
             border-bottom: none;
         }
+
+        /* 日志级别颜色 */
+        .log-level-info { color: #0dcaf0; }
+        .log-level-warning { color: #ffc107; }
+        .log-level-error { color: #dc3545; }
+        .log-level-debug { color: #6c757d; }
+        .log-level-critical { color: #dc3545; font-weight: bold; }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -123,6 +130,18 @@
                             {% if pending_requests_count and pending_requests_count > 0 %}
                             <span class="badge bg-danger">{{ pending_requests_count }}</span>
                             {% endif %}
+                        </a>
+                    </li>
+                    <!-- 新增系统日志链接 -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('logs') }}">
+                            <i class="bi bi-journal-text"></i> 系统日志
+                        </a>
+                    </li>
+                    <!-- 新增系统状态链接 -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('system_status') }}">
+                            <i class="bi bi-speedometer2"></i> 系统状态
                         </a>
                     </li>
                     {% endif %}
