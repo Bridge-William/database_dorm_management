@@ -1,0 +1,605 @@
+<!--
+  文件名: templates/backup.html
+  说明: 数据库备份管理页面
+-->
+{% extends "base.html" %}
+
+{% block title %}数据库备份 - 学生公寓管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-database-fill"></i> 数据库备份管理</h2>
+    <div class="btn-group">
+        <button class="btn btn-outline-success" onclick="refreshBackups()">
+            <i class="bi bi-arrow-clockwise"></i> 刷新
+        </button>
+        <button class="btn btn-outline-info" onclick="showCreateBackupModal()">
+            <i class="bi bi-plus-circle"></i> 创建备份
+        </button>
+    </div>
+</div>
+
+<!-- 磁盘使用情况 -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h6 class="text-muted">备份文件数</h6>
+                <h3 id="backupCount" class="text-primary">0</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h6 class="text-muted">总占用空间</h6>
+                <h3 id="totalSize" class="text-success">0 MB</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-light">
+            <div class="card-body text-center">
+                <h6 class="text-muted">备份目录</h6>
+                <h6 id="backupDir" class="text-info" style="word-break: break-all;">-</h6>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 备份列表 -->
+<div class="card">
+    <div class="card-header bg-light">
+        <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="bi bi-list"></i> 备份文件列表</h6>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                <label class="form-check-label" for="autoRefresh">
+                    <small>自动刷新 (30秒)</small>
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th width="20%">文件名</th>
+                        <th width="10%">大小</th>
+                        <th width="15%">备份时间</th>
+                        <th width="10%">类型</th>
+                        <th width="25%">说明</th>
+                        <th width="20%">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="backupTableBody">
+                    <!-- 备份数据将通过JavaScript动态加载 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <small class="text-muted">提示：备份文件存储在服务器本地，建议定期下载备份到安全位置</small>
+            </div>
+            <div>
+                <small class="text-muted">显示 <span id="displayCount">0</span> 个备份</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 创建备份模态框 -->
+<div class="modal fade" id="createBackupModal" tabindex="-1" aria-labelledby="createBackupModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createBackupModalLabel">
+                    <i class="bi bi-database-add"></i> 创建数据库备份
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createBackupForm">
+                    <div class="mb-3">
+                        <label for="backupType" class="form-label">备份类型</label>
+                        <select class="form-select" id="backupType" required>
+                            <option value="full">完整备份 (结构+数据)</option>
+                            <option value="data">仅数据备份</option>
+                            <option value="schema">仅结构备份</option>
+                        </select>
+                        <div class="form-text">
+                            完整备份：包含所有表结构和数据<br>
+                            仅数据备份：只备份数据，不包含表结构<br>
+                            仅结构备份：只备份表结构，不包含数据
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="backupComment" class="form-label">备份说明 (可选)</label>
+                        <textarea class="form-control" id="backupComment" rows="3"
+                                  placeholder="请输入备份说明，如：日常备份、更新前备份等"></textarea>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>注意：</strong>备份过程可能需要一些时间，请勿关闭此窗口。
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> 取消
+                </button>
+                <button type="button" class="btn btn-primary" onclick="createBackup()">
+                    <i class="bi bi-check-circle"></i> 开始备份
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 备份详情模态框 -->
+<div class="modal fade" id="backupDetailModal" tabindex="-1" aria-labelledby="backupDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="backupDetailModalLabel">
+                    <i class="bi bi-info-circle"></i> 备份文件详情
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="backupDetailContent">
+                    <!-- 详情内容将通过JavaScript动态加载 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> 关闭
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 恢复确认模态框 -->
+<div class="modal fade" id="restoreConfirmModal" tabindex="-1" aria-labelledby="restoreConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="restoreConfirmModalLabel">
+                    <i class="bi bi-exclamation-triangle"></i> 警告：数据库恢复
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <h6><i class="bi bi-exclamation-octagon"></i> 危险操作警告</h6>
+                    <p>此操作将用备份文件中的数据<strong>完全覆盖</strong>当前数据库。</p>
+                    <p><strong>所有未备份的数据将永久丢失！</strong></p>
+                </div>
+                <div class="mb-3">
+                    <label for="restoreFilename" class="form-label">备份文件</label>
+                    <input type="text" class="form-control" id="restoreFilename" readonly>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="confirmRestore">
+                        <label class="form-check-label text-danger" for="confirmRestore">
+                            我确认已理解此操作的后果，并确认要恢复数据库
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> 取消
+                </button>
+                <button type="button" class="btn btn-danger" onclick="confirmRestore()" disabled id="restoreBtn">
+                    <i class="bi bi-arrow-counterclockwise"></i> 确认恢复
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let autoRefreshInterval = null;
+let currentRestoreFilename = null;
+
+// 页面加载完成后执行
+document.addEventListener('DOMContentLoaded', function() {
+    loadBackups();
+    loadDiskUsage();
+    startAutoRefresh();
+
+    // 设置自动刷新复选框事件
+    document.getElementById('autoRefresh').addEventListener('change', function() {
+        if (this.checked) {
+            startAutoRefresh();
+        } else {
+            stopAutoRefresh();
+        }
+    });
+
+    // 设置恢复确认复选框事件
+    document.getElementById('confirmRestore').addEventListener('change', function() {
+        document.getElementById('restoreBtn').disabled = !this.checked;
+    });
+});
+
+// 加载备份列表
+async function loadBackups() {
+    try {
+        const response = await fetch('/api/backup/list');
+        const data = await response.json();
+
+        if (data.success) {
+            renderBackups(data.backups);
+        } else {
+            showAlert('加载备份列表失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('加载备份列表失败:', error);
+        showAlert('加载备份列表失败，请检查网络连接', 'danger');
+    }
+}
+
+// 加载磁盘使用情况
+async function loadDiskUsage() {
+    try {
+        const response = await fetch('/api/backup/disk-usage');
+        const data = await response.json();
+
+        if (data.success) {
+            document.getElementById('backupCount').textContent = data.usage.backup_count;
+            document.getElementById('totalSize').textContent = data.usage.total_size;
+            document.getElementById('backupDir').textContent = data.usage.backup_dir;
+        }
+    } catch (error) {
+        console.error('加载磁盘使用情况失败:', error);
+    }
+}
+
+// 渲染备份列表
+function renderBackups(backups) {
+    const tableBody = document.getElementById('backupTableBody');
+    tableBody.innerHTML = '';
+
+    if (backups.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="6" class="text-center py-5">
+                    <i class="bi bi-database-x" style="font-size: 3rem; color: #ccc;"></i>
+                    <p class="mt-3 text-muted">暂无备份文件</p>
+                </td>
+            </tr>
+        `;
+        document.getElementById('displayCount').textContent = '0';
+        return;
+    }
+
+    backups.forEach(backup => {
+        const row = document.createElement('tr');
+
+        // 格式化时间
+        const time = new Date(backup.created_time).toLocaleString('zh-CN');
+
+        // 获取备份类型显示文本
+        let typeText = '完整';
+        let typeBadge = 'bg-primary';
+
+        if (backup.metadata.backup_type === 'data') {
+            typeText = '仅数据';
+            typeBadge = 'bg-info';
+        } else if (backup.metadata.backup_type === 'schema') {
+            typeText = '仅结构';
+            typeBadge = 'bg-warning';
+        }
+
+        row.innerHTML = `
+            <td>
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-file-earmark-zip text-primary me-2"></i>
+                    <div>
+                        <strong class="d-block">${backup.filename}</strong>
+                        <small class="text-muted">${backup.metadata.database || '未知数据库'}</small>
+                    </div>
+                </div>
+            </td>
+            <td><span class="badge bg-secondary">${backup.size}</span></td>
+            <td><small>${time}</small></td>
+            <td><span class="badge ${typeBadge}">${typeText}</span></td>
+            <td>
+                <small class="text-truncate d-block" style="max-width: 200px;"
+                       title="${backup.metadata.comment || '无说明'}">
+                    ${backup.metadata.comment || '无说明'}
+                </small>
+            </td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-info" onclick="viewBackupDetail('${backup.filename}')">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="downloadBackup('${backup.filename}')">
+                        <i class="bi bi-download"></i>
+                    </button>
+                    <button class="btn btn-outline-warning" onclick="confirmRestoreBackup('${backup.filename}')">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                    <button class="btn btn-outline-danger" onclick="deleteBackup('${backup.filename}')">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>
+        `;
+
+        tableBody.appendChild(row);
+    });
+
+    document.getElementById('displayCount').textContent = backups.length;
+}
+
+// 显示创建备份模态框
+function showCreateBackupModal() {
+    const modal = new bootstrap.Modal(document.getElementById('createBackupModal'));
+    modal.show();
+}
+
+// 创建备份
+async function createBackup() {
+    const backupType = document.getElementById('backupType').value;
+    const comment = document.getElementById('backupComment').value;
+
+    if (!backupType) {
+        showAlert('请选择备份类型', 'warning');
+        return;
+    }
+
+    // 禁用按钮，防止重复点击
+    const createBtn = document.querySelector('#createBackupModal .btn-primary');
+    const originalText = createBtn.innerHTML;
+    createBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 备份中...';
+    createBtn.disabled = true;
+
+    try {
+        const formData = new FormData();
+        formData.append('backup_type', backupType);
+        formData.append('comment', comment);
+
+        const response = await fetch('/api/backup/create', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert(`备份创建成功: ${data.filename}`, 'success');
+            loadBackups();
+            loadDiskUsage();
+
+            // 关闭模态框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('createBackupModal'));
+            modal.hide();
+
+            // 重置表单
+            document.getElementById('createBackupForm').reset();
+        } else {
+            showAlert('备份创建失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('创建备份失败:', error);
+        showAlert('创建备份失败，请检查网络连接', 'danger');
+    } finally {
+        // 恢复按钮状态
+        createBtn.innerHTML = originalText;
+        createBtn.disabled = false;
+    }
+}
+
+// 查看备份详情
+async function viewBackupDetail(filename) {
+    try {
+        const response = await fetch('/api/backup/info/' + encodeURIComponent(filename));
+        const data = await response.json();
+
+        if (data.success) {
+            const info = data.info;
+            const detailContent = document.getElementById('backupDetailContent');
+
+            let html = `
+                <div class="mb-3">
+                    <strong>文件名:</strong> <code>${info.filename}</code>
+                </div>
+                <div class="mb-3">
+                    <strong>文件大小:</strong> ${info.size}
+                </div>
+                <div class="mb-3">
+                    <strong>创建时间:</strong> ${new Date(info.created_time).toLocaleString('zh-CN')}
+                </div>
+                <div class="mb-3">
+                    <strong>修改时间:</strong> ${new Date(info.modified_time).toLocaleString('zh-CN')}
+                </div>
+            `;
+
+            if (info.metadata) {
+                html += `
+                    <div class="mb-3">
+                        <strong>备份类型:</strong>
+                        <span class="badge ${info.metadata.backup_type === 'data' ? 'bg-info' : info.metadata.backup_type === 'schema' ? 'bg-warning' : 'bg-primary'}">
+                            ${info.metadata.backup_type === 'data' ? '仅数据' : info.metadata.backup_type === 'schema' ? '仅结构' : '完整'}
+                        </span>
+                    </div>
+                    <div class="mb-3">
+                        <strong>数据库:</strong> ${info.metadata.database || '未知'}
+                    </div>
+                    <div class="mb-3">
+                        <strong>说明:</strong> ${info.metadata.comment || '无说明'}
+                    </div>
+                    <div class="mb-3">
+                        <strong>表数量:</strong> ${info.metadata.tables || '未知'}
+                    </div>
+                `;
+            }
+
+            if (info.preview) {
+                html += `
+                    <div class="mb-3">
+                        <strong>文件预览:</strong>
+                        <pre class="bg-light p-3 rounded mt-2" style="max-height: 200px; overflow: auto;">
+${info.preview}
+                        </pre>
+                    </div>
+                `;
+            }
+
+            html += `
+                <div class="alert alert-info mt-3">
+                    <i class="bi bi-info-circle"></i>
+                    <small>文件路径: ${info.path}</small>
+                </div>
+            `;
+
+            detailContent.innerHTML = html;
+
+            const modal = new bootstrap.Modal(document.getElementById('backupDetailModal'));
+            modal.show();
+        } else {
+            showAlert('获取备份详情失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('获取备份详情失败:', error);
+        showAlert('获取备份详情失败，请检查网络连接', 'danger');
+    }
+}
+
+// 下载备份
+function downloadBackup(filename) {
+    window.open('/api/backup/download/' + encodeURIComponent(filename), '_blank');
+}
+
+// 确认恢复备份
+function confirmRestoreBackup(filename) {
+    currentRestoreFilename = filename;
+    document.getElementById('restoreFilename').value = filename;
+    document.getElementById('confirmRestore').checked = false;
+    document.getElementById('restoreBtn').disabled = true;
+
+    const modal = new bootstrap.Modal(document.getElementById('restoreConfirmModal'));
+    modal.show();
+}
+
+// 确认执行恢复
+async function confirmRestore() {
+    if (!currentRestoreFilename) {
+        showAlert('未选择备份文件', 'danger');
+        return;
+    }
+
+    if (!confirm('最后一次确认：此操作将覆盖当前数据库，是否继续？')) {
+        return;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('confirm', 'yes');
+
+        const response = await fetch(`/api/backup/restore/${encodeURIComponent(currentRestoreFilename)}`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('数据库恢复成功，请重新登录系统', 'success');
+
+            // 关闭模态框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('restoreConfirmModal'));
+            modal.hide();
+
+            // 延迟跳转，让用户看到提示信息
+            setTimeout(() => {
+                window.location.href = '/logout';
+            }, 2000);
+        } else {
+            showAlert('数据库恢复失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('恢复备份失败:', error);
+        showAlert('恢复备份失败，请检查网络连接', 'danger');
+    }
+}
+
+// 删除备份
+function deleteBackup(filename) {
+    if (!confirm(`确定要删除备份文件 "${filename}" 吗？此操作不可恢复！`)) {
+        return;
+    }
+
+    fetch(`/api/backup/delete/${encodeURIComponent(filename)}`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('备份文件删除成功', 'success');
+            loadBackups();
+            loadDiskUsage();
+        } else {
+            showAlert('删除备份文件失败: ' + data.message, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('删除备份文件失败:', error);
+        showAlert('删除备份文件失败', 'danger');
+    });
+}
+
+// 刷新备份列表
+function refreshBackups() {
+    loadBackups();
+    loadDiskUsage();
+    showAlert('备份列表已刷新', 'info');
+}
+
+// 开始自动刷新
+function startAutoRefresh() {
+    stopAutoRefresh(); // 先停止现有的定时器
+    autoRefreshInterval = setInterval(refreshBackups, 30000); // 30秒刷新一次
+}
+
+// 停止自动刷新
+function stopAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+    }
+}
+
+// 显示提示消息
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 80px; right: 20px; z-index: 1050;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+    document.body.appendChild(alertDiv);
+
+    // 3秒后自动消失
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 3000);
+}
+</script>
+{% endblock %}

@@ -20,10 +20,14 @@ import psutil
 import platform
 import shutil
 import re
+from pathlib import Path
+from backup import DatabaseBackup  # 添加备份模块导入
 
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-in-production'
+
+
 
 # ==================== 日志配置 ====================
 
@@ -88,6 +92,17 @@ def log_operation(operation_type):
                 
         return decorated_function
     return decorator
+
+
+# ==================== 创建必要的目录 ====================
+# 添加在日志配置之后，应用启动时间之前
+required_dirs = ['logs', 'backups']
+for dir_name in required_dirs:
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
+        logger.info(f"创建目录: {dir_name}")
+    else:
+        logger.debug(f"目录已存在: {dir_name}")
 
 # MySQL配置
 app.config['MYSQL_HOST'] = 'localhost'
@@ -2096,6 +2111,204 @@ def view_announcement(announcement_id):
     now = datetime.now()
 
     return render_template('view_announcement.html', announcement=announcement, now=now)
+
+
+# ==================== 数据库备份功能 ====================
+
+@app.route('/backup')
+@admin_required
+def backup_management():
+    """数据库备份管理页面"""
+    logger.info(f"访问数据库备份管理 - 管理员: {session['user_id']}")
+    return render_template('backup.html')
+
+
+@app.route('/api/backup/create', methods=['POST'])
+@admin_required
+@log_operation("创建数据库备份")
+def api_create_backup():
+    """创建数据库备份API"""
+    try:
+        backup_type = request.form.get('backup_type', 'full')
+        comment = request.form.get('comment', '')
+
+        if backup_type not in ['full', 'data', 'schema']:
+            return jsonify({
+                'success': False,
+                'message': '无效的备份类型'
+            }), 400
+
+        backup_manager = DatabaseBackup(app.config)
+        result = backup_manager.create_backup(backup_type, comment)
+
+        if result['success']:
+            logger.info(f"数据库备份创建成功 - 文件: {result['filename']}, 操作者: {session['user_id']}")
+        else:
+            logger.error(f"数据库备份创建失败 - 错误: {result.get('error', '未知错误')}, 操作者: {session['user_id']}")
+
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"创建备份API失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'创建备份失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/backup/list')
+@admin_required
+def api_list_backups():
+    """列出备份文件API"""
+    try:
+        backup_manager = DatabaseBackup(app.config)
+        backups = backup_manager.list_backups()
+
+        return jsonify({
+            'success': True,
+            'backups': backups,
+            'count': len(backups)
+        })
+
+    except Exception as e:
+        logger.error(f"列出备份文件失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'列出备份文件失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/backup/delete/<filename>', methods=['POST'])
+@admin_required
+@log_operation("删除数据库备份")
+def api_delete_backup(filename):
+    """删除备份文件API"""
+    try:
+        backup_manager = DatabaseBackup(app.config)
+        result = backup_manager.delete_backup(filename)
+
+        if result['success']:
+            logger.info(f"删除备份文件成功 - 文件: {filename}, 操作者: {session['user_id']}")
+        else:
+            logger.warning(f"删除备份文件失败 - 文件: {filename}, 错误: {result.get('message', '未知错误')}")
+
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"删除备份文件API失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'删除备份文件失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/backup/info/<filename>')
+@admin_required
+def api_get_backup_info(filename):
+    """获取备份文件信息API"""
+    try:
+        backup_manager = DatabaseBackup(app.config)
+        info = backup_manager.get_backup_info(filename)
+
+        if info:
+            return jsonify({
+                'success': True,
+                'info': info
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '备份文件不存在'
+            }), 404
+
+    except Exception as e:
+        logger.error(f"获取备份文件信息失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'获取备份文件信息失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/backup/disk-usage')
+@admin_required
+def api_get_disk_usage():
+    """获取备份磁盘使用情况API"""
+    try:
+        backup_manager = DatabaseBackup(app.config)
+        usage = backup_manager.get_disk_usage()
+
+        return jsonify({
+            'success': True,
+            'usage': usage
+        })
+
+    except Exception as e:
+        logger.error(f"获取磁盘使用情况失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'获取磁盘使用情况失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/backup/download/<filename>')
+@admin_required
+@log_operation("下载数据库备份")
+def api_download_backup(filename):
+    """下载备份文件API"""
+    try:
+        backup_dir = Path("backups")
+        backup_file = backup_dir / filename
+
+        if not backup_file.exists():
+            flash('备份文件不存在', 'danger')
+            return redirect(url_for('backup_management'))
+
+        logger.info(f"下载备份文件 - 文件: {filename}, 操作者: {session['user_id']}")
+
+        return send_file(
+            str(backup_file),
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/zip'
+        )
+
+    except Exception as e:
+        logger.error(f"下载备份文件失败: {str(e)}")
+        flash(f'下载备份文件失败: {str(e)}', 'danger')
+        return redirect(url_for('backup_management'))
+
+
+@app.route('/api/backup/restore/<filename>', methods=['POST'])
+@admin_required
+@log_operation("恢复数据库备份")
+def api_restore_backup(filename):
+    """恢复数据库备份API"""
+    try:
+        # 确认操作
+        confirm = request.form.get('confirm', 'no')
+        if confirm != 'yes':
+            return jsonify({
+                'success': False,
+                'message': '需要确认恢复操作'
+            }), 400
+
+        backup_manager = DatabaseBackup(app.config)
+        result = backup_manager.restore_backup(f"backups/{filename}")
+
+        if result['success']:
+            logger.warning(f"数据库恢复成功 - 文件: {filename}, 操作者: {session['user_id']}")
+            logger.warning(f"数据库已从备份恢复，操作者: {session['user_id']}")
+        else:
+            logger.error(f"数据库恢复失败 - 文件: {filename}, 错误: {result.get('message', '未知错误')}")
+
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"恢复备份API失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'恢复备份失败: {str(e)}'
+        }), 500
 
 
 # ==================== API接口 ====================
