@@ -19,6 +19,7 @@ import time
 import psutil
 import platform
 import shutil
+import re
 
 
 app = Flask(__name__)
@@ -120,42 +121,52 @@ def verify_password(stored_password, provided_password):
     return False
 
 
-def generate_next_user_id():
-    """生成下一个用户ID，格式：U + 年月(4位) + 4位顺序号"""
-    cur = mysql.connection.cursor()
+# def generate_next_user_id():
+#     """生成下一个用户ID，格式：U + 年月(4位) + 4位顺序号"""
+#     cur = mysql.connection.cursor()
+#
+#     # 获取当前年月
+#     current_year_month = datetime.now().strftime("%y%m")  # 格式：2501（25年1月）
+#
+#     # 查询当前年月最大的用户ID
+#     cur.execute("""
+#         SELECT user_id FROM users
+#         WHERE user_id LIKE %s
+#         ORDER BY user_id DESC
+#         LIMIT 1
+#     """, (f'U{current_year_month}%',))
+#
+#     result = cur.fetchone()
+#     cur.close()
+#
+#     if result:
+#         last_id = result['user_id']
+#         # 提取最后4位数字
+#         last_number = int(last_id[-4:])
+#         next_number = last_number + 1
+#     else:
+#         # 该年月还没有用户，从0001开始
+#         next_number = 1
+#
+#     # 格式化为4位数字，例如：0001, 0002, ... 9999
+#     next_user_id = f'U{current_year_month}{next_number:04d}'
+#
+#     # 如果超过9999，则使用更大的数字，但保持4位显示
+#     if next_number > 9999:
+#         next_user_id = f'U{current_year_month}{next_number}'
+#
+#     return next_user_id
 
-    # 获取当前年月
-    current_year_month = datetime.now().strftime("%y%m")  # 格式：2501（25年1月）
-
-    # 查询当前年月最大的用户ID
-    cur.execute("""
-        SELECT user_id FROM users 
-        WHERE user_id LIKE %s 
-        ORDER BY user_id DESC 
-        LIMIT 1
-    """, (f'U{current_year_month}%',))
-
-    result = cur.fetchone()
-    cur.close()
-
-    if result:
-        last_id = result['user_id']
-        # 提取最后4位数字
-        last_number = int(last_id[-4:])
-        next_number = last_number + 1
-    else:
-        # 该年月还没有用户，从0001开始
-        next_number = 1
-
-    # 格式化为4位数字，例如：0001, 0002, ... 9999
-    next_user_id = f'U{current_year_month}{next_number:04d}'
-
-    # 如果超过9999，则使用更大的数字，但保持4位显示
-    if next_number > 9999:
-        next_user_id = f'U{current_year_month}{next_number}'
-
-    return next_user_id
-
+def validate_user_id(user_id):
+    """验证用户ID格式：四位年份+两位部门+四位顺序号"""
+    if not user_id or len(user_id) != 10:
+        return False
+    if not user_id.isdigit():
+        return False
+    year = user_id[:4]
+    if int(year) < 2000 or int(year) > 2050:  # 假设年份在2000-2050之间
+        return False
+    return True
 
 def login_required(f):
     """登录验证装饰器"""
@@ -216,7 +227,7 @@ def index():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """登录 - 使用用户ID登录"""
+    """登录 - 使用用户ID（学校身份编号）登录"""
     if request.method == 'POST':
         user_id = request.form.get('user_id')
         password = request.form.get('password')
@@ -230,11 +241,12 @@ def login():
 
         if user and verify_password(user['password'], password):
             session['user_id'] = user['user_id']
-            session['username'] = user['username']
             session['realname'] = user['realname']
             session['permission'] = user['permission']
-            
-            logger.info(f"登录成功 - 用户ID: {user_id}, 姓名: {user['realname']}, 权限: {user['permission']}")
+            session['job_title'] = user['job_title']
+
+            logger.info(
+                f"登录成功 - 用户ID: {user_id}, 姓名: {user['realname']}, 职务: {user['job_title']}, 权限: {user['permission']}")
             flash(f'欢迎回来，{user["realname"]}！', 'success')
             return redirect(url_for('dashboard'))
         else:
@@ -265,19 +277,26 @@ def register():
     """用户注册页面"""
     if request.method == 'POST':
         try:
-            username = request.form.get('username')
+            user_id = request.form.get('user_id')
             password = request.form.get('password')
             password_confirm = request.form.get('password_confirm')
             realname = request.form.get('realname')
+            job_title = request.form.get('job_title', '教师')
             permission = request.form.get('permission', '教师')
             email = request.form.get('email', '')
             phone = request.form.get('phone', '')
+            remark = request.form.get('remark', '')
 
-            logger.info(f"注册申请 - 用户名: {username}, 真实姓名: {realname}, 权限申请: {permission}")
+            logger.info(f"注册申请 - 用户ID: {user_id}, 真实姓名: {realname}, 职务: {job_title}, 权限申请: {permission}")
 
             # 验证输入
-            if not username or not password or not realname or not email:
-                flash('请填写必填项', 'danger')
+            if not user_id or not password or not realname or not email or not phone:
+                flash('请填写所有必填项', 'danger')
+                return redirect(url_for('register'))
+
+            # 验证用户ID格式
+            if not validate_user_id(user_id):
+                flash('用户ID格式不正确，应为10位数字（四位年份+两位部门+四位顺序号）', 'danger')
                 return redirect(url_for('register'))
 
             if password != password_confirm:
@@ -290,11 +309,18 @@ def register():
 
             cur = mysql.connection.cursor()
 
-            # 检查是否有待审批的同名申请
-            cur.execute("SELECT username FROM user_requests WHERE username = %s AND status = '待审批'", (username,))
+            # 检查是否已有相同用户ID的待审批申请
+            cur.execute("SELECT user_id FROM user_requests WHERE user_id = %s AND status = '待审批'", (user_id,))
             if cur.fetchone():
-                logger.warning(f"重复注册申请 - 用户名: {username}")
+                logger.warning(f"重复注册申请 - 用户ID: {user_id}")
                 flash('您已提交过注册申请，请等待审批结果', 'warning')
+                cur.close()
+                return redirect(url_for('register'))
+
+            # 检查用户ID是否已存在
+            cur.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
+            if cur.fetchone():
+                flash('该用户ID已存在，请使用其他ID', 'danger')
                 cur.close()
                 return redirect(url_for('register'))
 
@@ -303,19 +329,19 @@ def register():
 
             # 插入注册申请
             cur.execute("""
-                INSERT INTO user_requests (username, password, realname, permission, email, phone, status)
-                VALUES (%s, %s, %s, %s, %s, %s, '待审批')
-            """, (username, hashed_password, realname, permission, email, phone))
+                INSERT INTO user_requests (user_id, password, realname, permission, job_title, email, phone, remark, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, '待审批')
+            """, (user_id, hashed_password, realname, permission, job_title, email, phone, remark))
 
             mysql.connection.commit()
             cur.close()
 
-            logger.info(f"注册申请提交成功 - 用户名: {username}, 真实姓名: {realname}")
+            logger.info(f"注册申请提交成功 - 用户ID: {user_id}, 真实姓名: {realname}")
             flash('注册申请已提交，请等待管理员审批。审批通过后您将收到通知。', 'success')
             return redirect(url_for('login'))
 
         except Exception as e:
-            logger.error(f"注册申请失败 - 用户名: {username}, 错误: {str(e)}")
+            logger.error(f"注册申请失败 - 用户ID: {user_id}, 错误: {str(e)}")
             logger.error(traceback.format_exc())
             flash(f'注册失败: {str(e)}', 'danger')
             return redirect(url_for('register'))
@@ -420,6 +446,12 @@ def forgot_password():
 
             logger.info(f"密码重置请求 - 用户ID: {user_id}")
 
+            # 验证用户ID格式（10位数字）
+            if not re.match(r'^\d{10}$', user_id):
+                logger.warning(f"密码重置失败 - 用户ID格式不正确: {user_id}")
+                flash('用户ID格式不正确，应为10位数字（四位年份+两位部门+四位顺序号）', 'danger')
+                return redirect(url_for('forgot_password'))
+
             cur = mysql.connection.cursor()
 
             # 验证用户ID是否存在
@@ -467,8 +499,9 @@ def user_requests():
     logger.info(f"查看注册申请 - 管理员: {session['user_id']}")
     status_filter = request.args.get('status', '待审批')
     request_id = request.args.get('request_id', '')
-    username = request.args.get('username', '')
+    user_id = request.args.get('user_id', '')
     realname = request.args.get('realname', '')
+    job_title = request.args.get('job_title', '')
     permission = request.args.get('permission', '')
     email = request.args.get('email', '')
     phone = request.args.get('phone', '')
@@ -489,13 +522,17 @@ def user_requests():
         conditions.append("request_id = %s")
         params.append(request_id)
 
-    if username:
-        conditions.append("username LIKE %s")
-        params.append(f'%{username}%')
+    if user_id:
+        conditions.append("user_id LIKE %s")
+        params.append(f'%{user_id}%')
 
     if realname:
         conditions.append("realname LIKE %s")
         params.append(f'%{realname}%')
+
+    if job_title:
+        conditions.append("job_title = %s")
+        params.append(job_title)
 
     if permission:
         conditions.append("permission = %s")
@@ -540,8 +577,9 @@ def user_requests():
                            status_filter=status_filter,
                            filters={
                                'request_id': request_id,
-                               'username': username,
+                               'user_id': user_id,
                                'realname': realname,
+                               'job_title': job_title,
                                'permission': permission,
                                'email': email,
                                'phone': phone,
@@ -582,32 +620,34 @@ def approve_user_request(request_id):
             cur.close()
             return redirect(url_for('user_requests'))
 
-        # 注意：不再检查用户名是否已存在，允许多个用户使用相同的用户名
-
-        # 生成用户ID
-        user_id = generate_next_user_id()
+        # 检查用户ID是否已存在
+        cur.execute("SELECT user_id FROM users WHERE user_id = %s", (user_request['user_id'],))
+        if cur.fetchone():
+            flash('该用户ID已存在', 'danger')
+            cur.close()
+            return redirect(url_for('user_requests'))
 
         # 创建用户，使用管理员选择的权限
         cur.execute("""
-            INSERT INTO users (user_id, username, password, realname, permission, email, phone)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (user_id, user_request['username'], user_request['password'],
-              user_request['realname'], granted_permission,
-              user_request.get('email', ''), user_request.get('phone', '')))
+            INSERT INTO users (user_id, password, realname, permission, job_title, email, phone, remark)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (user_request['user_id'], user_request['password'], user_request['realname'],
+              granted_permission, user_request['job_title'], user_request.get('email', ''),
+              user_request.get('phone', ''), user_request.get('remark', '')))
 
         # 更新申请状态，记录授予的权限
         cur.execute("""
             UPDATE user_requests 
             SET status = '已批准', 
-                remark = CONCAT('已批准 - 用户ID: ', %s, '，授予权限: ', %s)
+                admin_remark = CONCAT('已批准 - 授予权限: ', %s)
             WHERE request_id = %s
-        """, (user_id, granted_permission, request_id))
+        """, (granted_permission, request_id))
 
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"批准注册申请成功 - 申请ID: {request_id}, 新用户ID: {user_id}, 授予权限: {granted_permission}")
-        flash(f'已批准用户申请！新用户ID: {user_id}，授予权限: {granted_permission}', 'success')
+        logger.info(f"批准注册申请成功 - 申请ID: {request_id}, 用户ID: {user_request['user_id']}, 授予权限: {granted_permission}")
+        flash(f'已批准用户申请！用户ID: {user_request["user_id"]}，授予权限: {granted_permission}', 'success')
 
     except Exception as e:
         logger.error(f"批准注册申请失败 - 申请ID: {request_id}, 错误: {str(e)}")
@@ -622,7 +662,7 @@ def approve_user_request(request_id):
 def reject_user_request(request_id):
     """拒绝注册申请"""
     try:
-        remark = request.form.get('remark', '申请被拒绝')
+        admin_remark = request.form.get('admin_remark', '申请被拒绝')
 
         cur = mysql.connection.cursor()
 
@@ -643,14 +683,14 @@ def reject_user_request(request_id):
         # 更新申请状态
         cur.execute("""
             UPDATE user_requests 
-            SET status = '已拒绝', remark = %s 
+            SET status = '已拒绝', admin_remark = %s 
             WHERE request_id = %s
-        """, (remark, request_id))
+        """, (admin_remark, request_id))
 
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"拒绝注册申请 - 申请ID: {request_id}, 备注: {remark}")
+        logger.info(f"拒绝注册申请 - 申请ID: {request_id}, 备注: {admin_remark}")
         flash('已拒绝用户申请', 'success')
 
     except Exception as e:
@@ -1620,8 +1660,8 @@ def users():
     """用户管理 - 添加查询功能"""
     logger.info(f"查看用户列表 - 管理员: {session['user_id']}")
     user_id = request.args.get('user_id', '')
-    username = request.args.get('username', '')
     realname = request.args.get('realname', '')
+    job_title = request.args.get('job_title', '')
     permission = request.args.get('permission', '')
     created_start = request.args.get('created_start', '')
     created_end = request.args.get('created_end', '')
@@ -1631,7 +1671,7 @@ def users():
     cur = mysql.connection.cursor()
 
     query = """
-        SELECT user_id, username, realname, permission, created_at, updated_at 
+        SELECT user_id, realname, permission, job_title, email, phone, remark, created_at, updated_at 
         FROM users 
         WHERE 1=1
     """
@@ -1641,13 +1681,13 @@ def users():
         query += " AND user_id LIKE %s"
         params.append(f'%{user_id}%')
 
-    if username:
-        query += " AND username LIKE %s"
-        params.append(f'%{username}%')
-
     if realname:
         query += " AND realname LIKE %s"
         params.append(f'%{realname}%')
+
+    if job_title:
+        query += " AND job_title = %s"
+        params.append(job_title)
 
     if permission:
         query += " AND permission = %s"
@@ -1680,18 +1720,14 @@ def users():
 
     cur.close()
 
-    # 生成下一个用户ID用于前端显示
-    next_user_id = generate_next_user_id()
-
     logger.info(f"用户列表查询结果 - 数量: {len(users_list)}")
     return render_template('users.html',
                            users=users_list,
-                           next_user_id=next_user_id,
                            pending_requests_count=pending_count,
                            filters={
                                'user_id': user_id,
-                               'username': username,
                                'realname': realname,
+                               'job_title': job_title,
                                'permission': permission,
                                'created_start': created_start,
                                'created_end': created_end,
@@ -1706,39 +1742,46 @@ def users():
 def add_user():
     """添加用户"""
     try:
-        # 不再需要前端传入user_id，改为自动生成
-        username = request.form.get('username')
+        user_id = request.form.get('user_id')
         password = request.form.get('password')
         realname = request.form.get('realname')
+        job_title = request.form.get('job_title')
         permission = request.form.get('permission')
 
-        logger.info(f"添加用户 - 用户名: {username}, 真实姓名: {realname}, 权限: {permission}")
+        logger.info(f"添加用户 - 用户ID: {user_id}, 真实姓名: {realname}, 职务: {job_title}, 权限: {permission}")
 
-        if not username or not password or not realname:
+        if not user_id or not password or not realname or not job_title:
             flash('请填写完整信息', 'danger')
+            return redirect(url_for('users'))
+
+        # 验证用户ID格式
+        if not validate_user_id(user_id):
+            flash('用户ID格式不正确，应为10位数字（四位年份+两位部门+四位顺序号）', 'danger')
             return redirect(url_for('users'))
 
         hashed_password = hash_password(password)
 
         cur = mysql.connection.cursor()
 
-        # 注意：不再检查用户名是否已存在，允许多个用户使用相同的用户名
-
-        # 生成用户ID
-        user_id = generate_next_user_id()
+        # 检查用户ID是否已存在
+        cur.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
+        if cur.fetchone():
+            flash('用户ID已存在', 'danger')
+            cur.close()
+            return redirect(url_for('users'))
 
         cur.execute("""
-            INSERT INTO users (user_id, username, password, realname, permission)
+            INSERT INTO users (user_id, password, realname, permission, job_title)
             VALUES (%s, %s, %s, %s, %s)
-        """, (user_id, username, hashed_password, realname, permission))
+        """, (user_id, hashed_password, realname, permission, job_title))
 
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"添加用户成功 - 用户ID: {user_id}, 用户名: {username}")
-        flash(f'用户添加成功！用户ID: {user_id}，请告知用户使用此ID登录', 'success')
+        logger.info(f"添加用户成功 - 用户ID: {user_id}, 真实姓名: {realname}")
+        flash(f'用户添加成功！用户ID: {user_id}', 'success')
     except Exception as e:
-        logger.error(f"添加用户失败 - 用户名: {username}, 错误: {str(e)}")
+        logger.error(f"添加用户失败 - 用户ID: {user_id}, 错误: {str(e)}")
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('users'))
@@ -1751,10 +1794,11 @@ def edit_user(user_id):
     """编辑用户"""
     try:
         realname = request.form.get('realname')
+        job_title = request.form.get('job_title')
         permission = request.form.get('permission')
         password = request.form.get('password')
 
-        logger.info(f"编辑用户 - 用户ID: {user_id}, 新真实姓名: {realname}, 新权限: {permission}")
+        logger.info(f"编辑用户 - 用户ID: {user_id}, 新真实姓名: {realname}, 新职务: {job_title}, 新权限: {permission}")
 
         cur = mysql.connection.cursor()
 
@@ -1762,15 +1806,15 @@ def edit_user(user_id):
             hashed_password = hash_password(password)
             cur.execute("""
                 UPDATE users 
-                SET realname=%s, permission=%s, password=%s
+                SET realname=%s, job_title=%s, permission=%s, password=%s
                 WHERE user_id=%s
-            """, (realname, permission, hashed_password, user_id))
+            """, (realname, job_title, permission, hashed_password, user_id))
         else:
             cur.execute("""
                 UPDATE users 
-                SET realname=%s, permission=%s
+                SET realname=%s, job_title=%s, permission=%s
                 WHERE user_id=%s
-            """, (realname, permission, user_id))
+            """, (realname, job_title, permission, user_id))
 
         mysql.connection.commit()
         cur.close()

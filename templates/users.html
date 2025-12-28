@@ -35,14 +35,17 @@
                        placeholder="用户ID">
             </div>
             <div class="col-md-2">
-                <label class="form-label">用户名</label>
-                <input type="text" class="form-control" name="username" value="{{ filters.username }}"
-                       placeholder="用户名">
-            </div>
-            <div class="col-md-2">
                 <label class="form-label">真实姓名</label>
                 <input type="text" class="form-control" name="realname" value="{{ filters.realname }}"
                        placeholder="真实姓名">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">职务</label>
+                <select class="form-select" name="job_title">
+                    <option value="">全部职务</option>
+                    <option value="教师" {% if filters.job_title == '教师' %}selected{% endif %}>教师</option>
+                    <option value="工作人员" {% if filters.job_title == '工作人员' %}selected{% endif %}>工作人员</option>
+                </select>
             </div>
             <div class="col-md-2">
                 <label class="form-label">权限</label>
@@ -85,7 +88,6 @@
 <div class="alert alert-info">
     <i class="bi bi-info-circle"></i>
     <strong>提示：</strong>此页面仅管理员可访问。当前共有 <strong>{{ users|length }}</strong> 个系统用户。
-    下一个可用的用户ID为: <strong>{{ next_user_id }}</strong>
 </div>
 
 <div class="card shadow-sm">
@@ -95,11 +97,12 @@
                 <thead class="table-light">
                     <tr>
                         <th width="15%">用户ID</th>
-                        <th width="15%">用户名</th>
                         <th width="15%">真实姓名</th>
+                        <th width="12%">职务</th>
                         <th width="12%">权限</th>
-                        <th width="18%">创建时间</th>
-                        <th width="18%">最后更新</th>
+                        <th width="12%">邮箱</th>
+                        <th width="12%">手机号</th>
+                        <th width="12%">创建时间</th>
                         <th width="10%">操作</th>
                     </tr>
                 </thead>
@@ -114,9 +117,18 @@
                         </td>
                         <td>
                             <i class="bi bi-person-circle"></i>
-                            <strong>{{ user.username }}</strong>
+                            <strong>{{ user.realname }}</strong>
                         </td>
-                        <td>{{ user.realname }}</td>
+                        <td>
+                            <span class="badge bg-secondary px-3 py-2">
+                                {% if user.job_title == '教师' %}
+                                <i class="bi bi-person-video3"></i>
+                                {% else %}
+                                <i class="bi bi-briefcase"></i>
+                                {% endif %}
+                                {{ user.job_title }}
+                            </span>
+                        </td>
                         <td>
                             <span class="badge bg-{% if user.permission == '管理员' %}danger{% else %}info{% endif %} px-3 py-2">
                                 {% if user.permission == '管理员' %}
@@ -128,6 +140,12 @@
                             </span>
                         </td>
                         <td>
+                            <small>{{ user.email or '-' }}</small>
+                        </td>
+                        <td>
+                            <small>{{ user.phone or '-' }}</small>
+                        </td>
+                        <td>
                             <small class="text-muted">
                                 {% if user.created_at %}
                                 {{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
@@ -137,24 +155,15 @@
                             </small>
                         </td>
                         <td>
-                            <small class="text-muted">
-                                {% if user.updated_at %}
-                                {{ user.updated_at.strftime('%Y-%m-%d %H:%M:%S') }}
-                                {% else %}
-                                -
-                                {% endif %}
-                            </small>
-                        </td>
-                        <td>
                             <div class="btn-group btn-group-sm" role="group">
                                 <button class="btn btn-outline-primary"
-                                        onclick="editUser('{{ user.user_id }}', '{{ user.username }}', '{{ user.realname }}', '{{ user.permission }}')"
+                                        onclick="editUser('{{ user.user_id }}', '{{ user.realname }}', '{{ user.job_title }}', '{{ user.permission }}')"
                                         title="编辑">
                                     <i class="bi bi-pencil"></i>
                                 </button>
                                 {% if user.user_id != session.user_id %}
                                 <button class="btn btn-outline-danger"
-                                        onclick="confirmDeleteUser('{{ user.user_id }}', '{{ user.username }}', '{{ user.realname }}')"
+                                        onclick="confirmDeleteUser('{{ user.user_id }}', '{{ user.realname }}')"
                                         title="删除">
                                     <i class="bi bi-trash"></i>
                                 </button>
@@ -216,20 +225,14 @@
             </div>
             <form method="POST" action="{{ url_for('add_user') }}" onsubmit="return validateAddUserForm(this)">
                 <div class="modal-body">
-                    <div class="alert alert-info">
-                        <i class="bi bi-info-circle"></i>
-                        系统将自动生成用户ID: <strong>{{ next_user_id }}</strong>
-                        <br><small>用户ID格式: U + 年月(4位) + 4位顺序号</small>
-                    </div>
-
                     <div class="mb-3">
-                        <label for="addUsername" class="form-label">
-                            用户名 <span class="text-danger">*</span>
+                        <label for="addUserId" class="form-label">
+                            用户ID <span class="text-danger">*</span>
                         </label>
-                        <input type="text" class="form-control" id="addUsername" name="username"
-                               required pattern="[a-zA-Z0-9_]{4,20}"
-                               placeholder="4-20位字母、数字或下划线">
-                        <div class="form-text">用户名用于显示，创建后不可修改</div>
+                        <input type="text" class="form-control" id="addUserId" name="user_id"
+                               required pattern="\d{10}"
+                               placeholder="10位数字（四位年份+两位部门+四位顺序号）">
+                        <div class="form-text">请输入用户的学校身份编号</div>
                     </div>
                     <div class="mb-3">
                         <label for="addRealname" class="form-label">
@@ -252,6 +255,15 @@
                         </label>
                         <input type="password" class="form-control" id="addPasswordConfirm"
                                required minlength="6" placeholder="再次输入密码">
+                    </div>
+                    <div class="mb-3">
+                        <label for="addJobTitle" class="form-label">
+                            职务 <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="addJobTitle" name="job_title" required>
+                            <option value="教师" selected>教师</option>
+                            <option value="工作人员">工作人员</option>
+                        </select>
                     </div>
                     <div class="mb-3">
                         <label for="addPermission" class="form-label">
@@ -298,16 +310,20 @@
                         <div class="form-text">用户ID不可修改</div>
                     </div>
                     <div class="mb-3">
-                        <label for="editUsername" class="form-label">用户名</label>
-                        <input type="text" class="form-control" id="editUsername" disabled>
-                        <div class="form-text">用户名不可修改</div>
-                    </div>
-                    <div class="mb-3">
                         <label for="editRealname" class="form-label">
                             真实姓名 <span class="text-danger">*</span>
                         </label>
                         <input type="text" class="form-control" id="editRealname" name="realname"
                                required maxlength="50">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editJobTitle" class="form-label">
+                            职务 <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="editJobTitle" name="job_title" required>
+                            <option value="教师">教师</option>
+                            <option value="工作人员">工作人员</option>
+                        </select>
                     </div>
                     <div class="mb-3">
                         <label for="editPassword" class="form-label">新密码</label>
@@ -349,13 +365,13 @@
 <script>
 // 验证添加用户表单
 function validateAddUserForm(form) {
-    const username = form.querySelector('[name="username"]').value;
+    const user_id = form.querySelector('[name="user_id"]').value;
     const password = form.querySelector('#addPassword').value;
     const confirm = form.querySelector('#addPasswordConfirm').value;
 
-    // 验证用户名格式
-    if (!/^[a-zA-Z0-9_]{4,20}$/.test(username)) {
-        alert('用户名必须是4-20位字母、数字或下划线');
+    // 验证用户ID格式
+    if (!/^\d{10}$/.test(user_id)) {
+        alert('用户ID必须是10位数字（四位年份+两位部门+四位顺序号）');
         return false;
     }
 
@@ -412,10 +428,10 @@ function validateEditUserForm(form) {
 }
 
 // 编辑用户
-function editUser(id, username, realname, permission) {
+function editUser(id, realname, job_title, permission) {
     document.getElementById('editUserId').value = id;
-    document.getElementById('editUsername').value = username;
     document.getElementById('editRealname').value = realname;
+    document.getElementById('editJobTitle').value = job_title;
     document.getElementById('editPermission').value = permission;
     document.getElementById('editPassword').value = '';
     document.getElementById('editPasswordConfirm').value = '';
@@ -426,10 +442,9 @@ function editUser(id, username, realname, permission) {
 }
 
 // 确认删除用户
-function confirmDeleteUser(id, username, realname) {
+function confirmDeleteUser(id, realname) {
     const message = `确定要删除以下用户吗？\n\n` +
                    `用户ID: ${id}\n` +
-                   `用户名: ${username}\n` +
                    `姓名: ${realname}\n\n` +
                    `⚠️ 警告：此操作不可恢复！`;
 

@@ -32,18 +32,25 @@
                 </div>
                 <div class="row mb-3">
                     <div class="col-6">
-                        <strong>用户名:</strong>
-                    </div>
-                    <div class="col-6">
-                        {{ user.username }}
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-6">
                         <strong>真实姓名:</strong>
                     </div>
                     <div class="col-6">
                         {{ user.realname }}
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <strong>职务:</strong>
+                    </div>
+                    <div class="col-6">
+                        <span class="badge bg-secondary px-3 py-2">
+                            {% if user.job_title == '教师' %}
+                            <i class="bi bi-person-video3"></i>
+                            {% else %}
+                            <i class="bi bi-briefcase"></i>
+                            {% endif %}
+                            {{ user.job_title }}
+                        </span>
                     </div>
                 </div>
                 <div class="row mb-3">
@@ -75,6 +82,14 @@
                     </div>
                     <div class="col-6">
                         {{ user.phone or '未设置' }}
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <strong>备注:</strong>
+                    </div>
+                    <div class="col-6">
+                        {{ user.remark or '无' }}
                     </div>
                 </div>
                 <div class="row">

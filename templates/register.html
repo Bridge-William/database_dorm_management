@@ -109,14 +109,15 @@
 
         <form method="POST" action="{{ url_for('register') }}" onsubmit="return validateRegisterForm(this)">
             <div class="row g-2">
-                <div class="col-md-6">
-                    <label class="form-label">用户名 <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" name="username" required
-                           pattern="[a-zA-Z0-9_]{4,20}"
-                           placeholder="4-20位字母、数字或下划线">
-                    <div class="form-text">登录时使用的用户名</div>
+                <div class="col-12">
+                    <label class="form-label">用户ID <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="user_id" required
+                           pattern="\d{10}"
+                           placeholder="10位数字（四位年份+两位部门+四位顺序号，如：2023040087）">
+                    <div class="form-text">请输入您的学校身份编号</div>
                 </div>
-                <div class="col-md-6">
+
+                <div class="col-12">
                     <label class="form-label">真实姓名 <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" name="realname" required
                            placeholder="请输入真实姓名">
@@ -134,37 +135,47 @@
                 </div>
 
                 <div class="col-md-6">
-                    <label class="form-label">邮箱 <span class="text-danger">*</span></label>
-                    <input type="email" class="form-control" name="email" required
-                           placeholder="用于接收通知">
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">手机号</label>
-                    <input type="tel" class="form-control" name="phone"
-                           pattern="1[3-9][0-9]{9}"
-                           placeholder="选填，11位手机号">
+                    <label class="form-label">职务 <span class="text-danger">*</span></label>
+                    <select class="form-select" name="job_title" required>
+                        <option value="教师" selected>教师</option>
+                        <option value="工作人员">工作人员</option>
+                    </select>
                 </div>
 
-                <div class="col-12">
+                <div class="col-md-6">
                     <label class="form-label">申请权限 <span class="text-danger">*</span></label>
                     <select class="form-select" name="permission" required>
                         <option value="教师" selected>教师（建议选择此项）</option>
                         <option value="管理员">管理员（需特殊理由）</option>
                     </select>
-                    <div class="form-text text-warning">
-                        <i class="bi bi-exclamation-triangle"></i>
-                        注意：申请管理员权限需管理员审核批准，管理员有权修改授予的权限级别
-                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">邮箱 <span class="text-danger">*</span></label>
+                    <input type="email" class="form-control" name="email" required
+                           placeholder="用于接收通知">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">手机号 <span class="text-danger">*</span></label>
+                    <input type="tel" class="form-control" name="phone" required
+                           pattern="1[3-9][0-9]{9}"
+                           placeholder="11位手机号">
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">申请备注</label>
+                    <textarea class="form-control" name="remark" rows="2"
+                              placeholder="选填，可填写申请理由或其他说明信息，便于管理员审核"></textarea>
                 </div>
 
                 <div class="col-12">
                     <div class="alert alert-info mb-2">
                         <i class="bi bi-info-circle"></i>
                         <strong>重要提示：</strong><br>
-                        1. 注册申请需要管理员审批<br>
-                        2. 审批通过后，系统会为您生成用户ID<br>
+                        1. 请使用您的学校身份编号（10位数字）作为用户ID<br>
+                        2. 注册申请需要管理员审批<br>
                         3. 审批结果将通过邮箱或系统通知告知<br>
-                        4. 请使用真实的个人信息，以便审核<br>
+                        4. 请确保填写的信息真实有效<br>
                         5. 如申请被拒绝，您可以修改信息后再次提交申请
                     </div>
                 </div>
@@ -191,11 +202,18 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
     function validateRegisterForm(form) {
+        const user_id = form.querySelector('[name="user_id"]').value;
         const password = document.getElementById('password').value;
         const passwordConfirm = document.getElementById('password_confirm').value;
-        const username = form.querySelector('[name="username"]').value;
         const email = form.querySelector('[name="email"]').value;
+        const phone = form.querySelector('[name="phone"]').value;
         const permission = form.querySelector('[name="permission"]').value;
+
+        // 验证用户ID格式
+        if (!/^\d{10}$/.test(user_id)) {
+            alert('用户ID必须是10位数字（四位年份+两位部门+四位顺序号）');
+            return false;
+        }
 
         // 验证邮箱
         if (!email) {
@@ -207,6 +225,17 @@
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
             alert('请输入有效的邮箱地址');
+            return false;
+        }
+
+        // 验证手机号
+        if (!phone) {
+            alert('手机号不能为空');
+            return false;
+        }
+
+        if (!/^1[3-9]\d{9}$/.test(phone)) {
+            alert('请输入有效的11位手机号');
             return false;
         }
 
@@ -222,15 +251,9 @@
             return false;
         }
 
-        // 验证用户名格式
-        if (!/^[a-zA-Z0-9_]{4,20}$/.test(username)) {
-            alert('用户名必须是4-20位字母、数字或下划线');
-            return false;
-        }
-
         // 如果申请管理员权限，提示确认
         if (permission === '管理员') {
-            return confirm('您正在申请管理员权限，这需要提供充分的理由并由管理员严格审核。管理员有权修改最终授予的权限级别。确定要继续吗？');
+            return confirm('您正在申请管理员权限，这需要提供充分的理由并由管理员严格审核。确定要继续吗？');
         }
 
         return true;

@@ -1,6 +1,6 @@
 <!--
   文件名: templates/user_requests.html
-  说明: 注册申请审批页面 - 添加权限选择功能和查询功能
+  说明: 注册申请审批页面 - 修改操作按钮布局，添加查看申请详情功能
 -->
 {% extends "base.html" %}
 
@@ -48,14 +48,22 @@
                        placeholder="申请ID">
             </div>
             <div class="col-md-2">
-                <label class="form-label">用户名</label>
-                <input type="text" class="form-control" name="username" value="{{ filters.username }}"
-                       placeholder="用户名">
+                <label class="form-label">用户ID</label>
+                <input type="text" class="form-control" name="user_id" value="{{ filters.user_id }}"
+                       placeholder="用户ID">
             </div>
             <div class="col-md-2">
                 <label class="form-label">真实姓名</label>
                 <input type="text" class="form-control" name="realname" value="{{ filters.realname }}"
                        placeholder="真实姓名">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">职务</label>
+                    <select class="form-select" name="job_title">
+                        <option value="">全部</option>
+                        <option value="教师" {% if filters.job_title == '教师' %}selected{% endif %}>教师</option>
+                        <option value="工作人员" {% if filters.job_title == '工作人员' %}selected{% endif %}>工作人员</option>
+                    </select>
             </div>
             <div class="col-md-2">
                 <label class="form-label">申请权限</label>
@@ -104,24 +112,38 @@
                 <thead class="table-light">
                     <tr>
                         <th width="5%">ID</th>
-                        <th width="10%">用户名</th>
+                        <th width="10%">用户ID</th>
                         <th width="10%">真实姓名</th>
+                        <th width="8%">职务</th>
                         <th width="8%">申请权限</th>
                         <th width="8%">状态</th>
                         <th width="12%">申请时间</th>
                         <th width="12%">邮箱</th>
                         <th width="12%">手机号</th>
-                        <th width="8%">操作</th>
+                        <th width="12%">操作</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for req in requests %}
-                    <tr>
+                    <tr data-request-id="{{ req.request_id }}"
+                        data-user-id="{{ req.user_id }}"
+                        data-realname="{{ req.realname }}"
+                        data-job-title="{{ req.job_title }}"
+                        data-permission="{{ req.permission }}"
+                        data-email="{{ req.email }}"
+                        data-phone="{{ req.phone }}"
+                        data-remark="{{ req.remark }}"
+                        data-created-at="{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}">
                         <td><small class="text-muted">{{ req.request_id }}</small></td>
                         <td>
-                            <strong>{{ req.username }}</strong>
+                            <strong>{{ req.user_id }}</strong>
                         </td>
                         <td>{{ req.realname }}</td>
+                        <td>
+                            <span class="badge bg-secondary">
+                                {{ req.job_title }}
+                            </span>
+                        </td>
                         <td>
                             <span class="badge bg-{% if req.permission == '管理员' %}danger{% else %}info{% endif %}">
                                 {{ req.permission }}
@@ -161,40 +183,65 @@
                         </td>
                         <td>
                             {% if req.status == '待审批' %}
-                            <div class="d-flex flex-column gap-1">
-                                <!-- 批准表单 - 添加权限选择 -->
-                                <form method="POST" action="{{ url_for('approve_user_request', request_id=req.request_id) }}"
-                                      class="d-flex gap-1">
-                                    <select class="form-select form-select-sm" name="granted_permission" required>
-                                        <option value="">选择权限</option>
-                                        <option value="教师" {% if req.permission == '教师' %}selected{% endif %}>教师</option>
-                                        <option value="管理员" {% if req.permission == '管理员' %}selected{% endif %}>管理员</option>
-                                    </select>
-                                    <button type="submit" class="btn btn-success btn-sm" title="批准">
-                                        <i class="bi bi-check-lg"></i>
-                                    </button>
-                                </form>
-                                <!-- 拒绝按钮 -->
-                                <button class="btn btn-outline-danger btn-sm"
-                                        onclick="rejectRequest({{ req.request_id }}, '{{ req.username }}')"
-                                        title="拒绝">
-                                    <i class="bi bi-x-lg"></i> 拒绝
+                            <div class="d-flex flex-column gap-2">
+                                <!-- 查看申请详情按钮 -->
+                                <button class="btn btn-outline-info btn-sm"
+                                        onclick="viewRequestDetails('{{ req.request_id }}')"
+                                        title="查看申请详情">
+                                    <i class="bi bi-eye"></i> 查看详情
                                 </button>
+
+                                <!-- 权限选择和操作按钮 -->
+                                <div class="d-flex flex-column gap-2">
+                                    <!-- 权限选择 -->
+                                    <form method="POST" action="{{ url_for('approve_user_request', request_id=req.request_id) }}"
+                                          class="mb-1">
+                                        <select class="form-select form-select-sm" name="granted_permission" required>
+                                            <option value="">选择授予权限</option>
+                                            <option value="教师" {% if req.permission == '教师' %}selected{% endif %}>教师</option>
+                                            <option value="管理员" {% if req.permission == '管理员' %}selected{% endif %}>管理员</option>
+                                        </select>
+                                    </form>
+
+                                    <!-- 批准和拒绝按钮 -->
+                                    <div class="d-flex gap-1">
+                                        <button type="button" class="btn btn-success btn-sm flex-fill"
+                                                onclick="approveRequest('{{ req.request_id }}')"
+                                                title="批准申请">
+                                            <i class="bi bi-check-lg"></i> 同意
+                                        </button>
+                                        <button class="btn btn-outline-danger btn-sm flex-fill"
+                                                onclick="rejectRequest('{{ req.request_id }}', '{{ req.user_id }}')"
+                                                title="拒绝申请">
+                                            <i class="bi bi-x-lg"></i> 拒绝
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                             {% elif req.status == '已批准' %}
-                            <small class="text-success">已批准</small>
+                            <div class="d-flex flex-column gap-1">
+                                <small class="text-success">已批准</small>
+                                <button class="btn btn-outline-info btn-sm"
+                                        onclick="viewRequestDetails('{{ req.request_id }}')"
+                                        title="查看申请详情">
+                                    <i class="bi bi-eye"></i> 查看详情
+                                </button>
+                            </div>
                             {% elif req.status == '已拒绝' %}
-                            <div class="btn-group btn-group-sm" role="group">
-                                <button class="btn btn-outline-secondary"
-                                        onclick="showRemark({{ req.request_id }}, '{{ req.remark or '无备注' }}')"
-                                        title="查看备注">
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                                <button class="btn btn-outline-danger"
-                                        onclick="deleteRequest({{ req.request_id }})"
-                                        title="删除记录">
-                                    <i class="bi bi-trash"></i>
-                                </button>
+                            <div class="d-flex flex-column gap-1">
+                                <small class="text-danger">已拒绝</small>
+                                <div class="d-flex gap-1">
+                                    <button class="btn btn-outline-info btn-sm"
+                                            onclick="viewRequestDetails('{{ req.request_id }}')"
+                                            title="查看申请详情">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm"
+                                            onclick="deleteRequest('{{ req.request_id }}')"
+                                            title="删除记录">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
                             </div>
                             {% endif %}
                         </td>
@@ -225,6 +272,57 @@
     </div>
 </div>
 
+<!-- 查看申请详情模态框 -->
+<div class="modal fade" id="viewDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">申请详情</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <table class="table table-bordered">
+                    <tr>
+                        <th width="30%">用户ID</th>
+                        <td id="detailUserId"></td>
+                    </tr>
+                    <tr>
+                        <th>真实姓名</th>
+                        <td id="detailRealname"></td>
+                    </tr>
+                    <tr>
+                        <th>职务</th>
+                        <td id="detailJobTitle"></td>
+                    </tr>
+                    <tr>
+                        <th>申请权限</th>
+                        <td id="detailPermission"></td>
+                    </tr>
+                    <tr>
+                        <th>邮箱</th>
+                        <td id="detailEmail"></td>
+                    </tr>
+                    <tr>
+                        <th>手机号</th>
+                        <td id="detailPhone"></td>
+                    </tr>
+                    <tr>
+                        <th>申请备注</th>
+                        <td id="detailRemark"></td>
+                    </tr>
+                    <tr>
+                        <th>申请时间</th>
+                        <td id="detailCreatedAt"></td>
+                    </tr>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 拒绝原因输入模态框 -->
 <div class="modal fade" id="rejectModal" tabindex="-1">
     <div class="modal-dialog">
@@ -235,10 +333,10 @@
             </div>
             <form method="POST" id="rejectForm">
                 <div class="modal-body">
-                    <p>确定要拒绝用户 <strong id="rejectUsername"></strong> 的注册申请吗？</p>
+                    <p>确定要拒绝用户 <strong id="rejectUserId"></strong> 的注册申请吗？</p>
                     <div class="mb-3">
                         <label class="form-label">拒绝原因（选填）</label>
-                        <textarea class="form-control" name="remark" rows="3"
+                        <textarea class="form-control" name="admin_remark" rows="3"
                                   placeholder="例如：信息不完整、权限申请不合理等"></textarea>
                     </div>
                 </div>
@@ -255,9 +353,64 @@
 
 {% block extra_js %}
 <script>
+// 查看申请详情
+function viewRequestDetails(requestId) {
+    // 找到对应的行
+    const row = document.querySelector(`tr[data-request-id="${requestId}"]`);
+    if (!row) return;
+
+    // 填充数据到模态框
+    document.getElementById('detailUserId').textContent = row.dataset.userId;
+    document.getElementById('detailRealname').textContent = row.dataset.realname;
+    document.getElementById('detailJobTitle').textContent = row.dataset.jobTitle;
+    document.getElementById('detailPermission').textContent = row.dataset.permission;
+    document.getElementById('detailEmail').textContent = row.dataset.email || '无';
+    document.getElementById('detailPhone').textContent = row.dataset.phone || '无';
+    document.getElementById('detailRemark').textContent = row.dataset.remark || '无';
+    document.getElementById('detailCreatedAt').textContent = row.dataset.createdAt;
+
+    // 显示模态框
+    const modal = new bootstrap.Modal(document.getElementById('viewDetailsModal'));
+    modal.show();
+}
+
+// 批准申请
+function approveRequest(requestId) {
+    // 找到对应的行和权限选择框
+    const row = document.querySelector(`tr[data-request-id="${requestId}"]`);
+    if (!row) return;
+
+    const permissionSelect = row.querySelector('select[name="granted_permission"]');
+    if (!permissionSelect || !permissionSelect.value) {
+        alert('请先选择要授予的权限');
+        return;
+    }
+
+    const message = `确定要批准此申请吗？\n\n` +
+                   `用户ID: ${row.dataset.userId}\n` +
+                   `真实姓名: ${row.dataset.realname}\n` +
+                   `授予权限: ${permissionSelect.value}`;
+
+    if (confirm(message)) {
+        // 创建表单并提交
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/user_requests/approve/${requestId}`;
+
+        const permissionInput = document.createElement('input');
+        permissionInput.type = 'hidden';
+        permissionInput.name = 'granted_permission';
+        permissionInput.value = permissionSelect.value;
+
+        form.appendChild(permissionInput);
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
 // 拒绝申请
-function rejectRequest(requestId, username) {
-    document.getElementById('rejectUsername').textContent = username;
+function rejectRequest(requestId, userId) {
+    document.getElementById('rejectUserId').textContent = userId;
     const form = document.getElementById('rejectForm');
     form.action = `/user_requests/reject/${requestId}`;
 
@@ -265,9 +418,9 @@ function rejectRequest(requestId, username) {
     modal.show();
 }
 
-// 查看备注
-function showRemark(requestId, remark) {
-    alert(`申请ID: ${requestId}\n\n备注信息:\n${remark}`);
+// 查看管理员备注
+function showRemark(requestId, adminRemark) {
+    alert(`申请ID: ${requestId}\n\n管理员备注信息:\n${adminRemark}`);
 }
 
 // 删除已处理的申请记录
