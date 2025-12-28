@@ -1,0 +1,1117 @@
+<!--
+  文件名: templates/auto_backup.html
+  说明: 自动备份管理页面
+-->
+{% extends "base.html" %}
+
+{% block title %}自动备份 - 学生公寓管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-clock-history"></i> 自动备份管理</h2>
+    <div class="btn-group">
+        <button class="btn btn-outline-success" onclick="refreshStatus()">
+            <i class="bi bi-arrow-clockwise"></i> 刷新
+        </button>
+        <button class="btn btn-outline-primary" onclick="showSettingsModal()">
+            <i class="bi bi-gear"></i> 设置
+        </button>
+        <button class="btn btn-outline-warning" onclick="backupNow()">
+            <i class="bi bi-lightning"></i> 立即备份
+        </button>
+    </div>
+</div>
+
+<!-- 状态卡片 -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card" id="statusCard">
+            <div class="card-body text-center">
+                <i class="bi bi-power" style="font-size: 2rem;"></i>
+                <h6 class="mt-2">自动备份状态</h6>
+                <h4 id="statusText" class="mt-2">加载中...</h4>
+                <div class="btn-group btn-group-sm mt-2">
+                    <button class="btn btn-success" onclick="startAutoBackup()" id="startBtn" disabled>
+                        <i class="bi bi-play"></i> 启动
+                    </button>
+                    <button class="btn btn-danger" onclick="stopAutoBackup()" id="stopBtn" disabled>
+                        <i class="bi bi-stop"></i> 停止
+                    </button>
+                    <button class="btn btn-warning" onclick="restartAutoBackup()" id="restartBtn" disabled>
+                        <i class="bi bi-arrow-repeat"></i> 重启
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="bi bi-calendar-check" style="font-size: 2rem;"></i>
+                <h6 class="mt-2">下次备份时间</h6>
+                <h4 id="nextBackupTime" class="mt-2">-</h4>
+                <small class="text-muted" id="nextBackupRemaining"></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="bi bi-clock" style="font-size: 2rem;"></i>
+                <h6 class="mt-2">上次备份时间</h6>
+                <h4 id="lastBackupTime" class="mt-2">-</h4>
+                <small class="text-muted" id="lastBackupAgo"></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body text-center">
+                <i class="bi bi-database" style="font-size: 2rem;"></i>
+                <h6 class="mt-2">备份总数</h6>
+                <h4 id="totalBackups" class="mt-2">0</h4>
+                <small class="text-muted" id="diskUsage">0 MB</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 备份统计图表 -->
+<div class="card mb-4">
+    <div class="card-header bg-light">
+        <h6 class="mb-0"><i class="bi bi-graph-up"></i> 备份统计</h6>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <canvas id="backupStatsChart" height="200"></canvas>
+            </div>
+            <div class="col-md-6">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>月份</th>
+                                <th>备份次数</th>
+                                <th>估算大小</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monthlyStatsBody">
+                            <!-- 月度统计数据将通过JavaScript动态加载 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 备份历史 -->
+<div class="card">
+    <div class="card-header bg-light">
+        <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="bi bi-list-check"></i> 最近备份历史</h6>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="autoRefreshHistory" checked>
+                <label class="form-check-label" for="autoRefreshHistory">
+                    <small>自动刷新 (30秒)</small>
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th width="20%">时间</th>
+                        <th width="25%">文件名</th>
+                        <th width="10%">大小</th>
+                        <th width="15%">状态</th>
+                        <th width="30%">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="historyTableBody">
+                    <!-- 历史数据将通过JavaScript动态加载 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer bg-white">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <small class="text-muted">提示：自动备份将在每天零点执行，保留最近30天的备份</small>
+            </div>
+            <div>
+                <small class="text-muted">显示 <span id="historyCount">0</span> 条记录</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 设置模态框 -->
+<div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="settingsModalLabel">
+                    <i class="bi bi-gear"></i> 自动备份设置
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="settingsForm">
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="enabled" name="enabled">
+                            <label class="form-check-label" for="enabled">
+                                <strong>启用自动备份</strong>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="backupTime" class="form-label">备份时间</label>
+                        <input type="time" class="form-control" id="backupTime" name="time" value="00:00" required>
+                        <div class="form-text">
+                            每天执行备份的时间（24小时制）
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="backupType" class="form-label">备份类型</label>
+                        <select class="form-select" id="backupType" name="backup_type" required>
+                            <option value="full">完整备份（结构+数据）</option>
+                            <option value="data">仅数据备份</option>
+                            <option value="schema">仅结构备份</option>
+                        </select>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="keepDays" class="form-label">保留天数</label>
+                            <input type="number" class="form-control" id="keepDays" name="keep_days"
+                                   min="1" max="365" value="30" required>
+                            <div class="form-text">
+                                自动删除多少天前的备份
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="maxBackups" class="form-label">最大备份数</label>
+                            <input type="number" class="form-control" id="maxBackups" name="max_backups"
+                                   min="1" max="1000" value="50" required>
+                            <div class="form-text">
+                                最多保留多少个备份文件
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="notifyOnError" name="notify_on_error" checked>
+                            <label class="form-check-label" for="notifyOnError">
+                                备份失败时记录错误日志
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <small>
+                            设置修改后会自动重启自动备份服务。注意：备份时间修改后，下次备份将在新的设定时间执行。
+                        </small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> 取消
+                </button>
+                <button type="button" class="btn btn-primary" onclick="saveSettings()">
+                    <i class="bi bi-check-circle"></i> 保存设置
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 立即备份确认模态框 -->
+<div class="modal fade" id="backupNowModal" tabindex="-1" aria-labelledby="backupNowModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="backupNowModalLabel">
+                    <i class="bi bi-lightning"></i> 立即执行备份
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>注意：</strong>此操作将立即开始备份数据库，备份过程可能需要一些时间。
+                </div>
+                <p>确定要立即执行数据库备份吗？</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> 取消
+                </button>
+                <button type="button" class="btn btn-warning" onclick="confirmBackupNow()">
+                    <i class="bi bi-check-circle"></i> 确认执行
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 备份详情模态框 -->
+<div class="modal fade" id="backupDetailModal" tabindex="-1" aria-labelledby="backupDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="backupDetailModalLabel">
+                    <i class="bi bi-info-circle"></i> 备份文件详情
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="backupDetailContent">
+                    <!-- 详情内容将通过JavaScript动态加载 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> 关闭
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 恢复确认模态框 -->
+<div class="modal fade" id="restoreConfirmModal" tabindex="-1" aria-labelledby="restoreConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="restoreConfirmModalLabel">
+                    <i class="bi bi-exclamation-triangle"></i> 警告：数据库恢复
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <h6><i class="bi bi-exclamation-octagon"></i> 危险操作警告</h6>
+                    <p>此操作将用备份文件中的数据<strong>完全覆盖</strong>当前数据库。</p>
+                    <p><strong>所有未备份的数据将永久丢失！</strong></p>
+                </div>
+                <div class="mb-3">
+                    <label for="restoreFilename" class="form-label">备份文件</label>
+                    <input type="text" class="form-control" id="restoreFilename" readonly>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="confirmRestore">
+                        <label class="form-check-label text-danger" for="confirmRestore">
+                            我确认已理解此操作的后果，并确认要恢复数据库
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> 取消
+                </button>
+                <button type="button" class="btn btn-danger" onclick="confirmRestore()" disabled id="restoreBtn">
+                    <i class="bi bi-arrow-counterclockwise"></i> 确认恢复
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 删除确认模态框 -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger">
+                <h5 class="modal-title text-white" id="deleteConfirmModalLabel">
+                    <i class="bi bi-trash"></i> 确认删除备份文件
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>警告：</strong>此操作将永久删除备份文件，且不可恢复！
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">要删除的文件：</label>
+                    <div class="alert alert-light">
+                        <code id="deleteFilename"></code>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="confirmDelete">
+                        <label class="form-check-label text-danger" for="confirmDelete">
+                            我确认要删除此备份文件
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle"></i> 取消
+                </button>
+                <button type="button" class="btn btn-danger" onclick="confirmDelete()" disabled id="deleteBtn">
+                    <i class="bi bi-trash"></i> 确认删除
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+let backupStatsChart = null;
+let autoRefreshHistoryInterval = null;
+let autoRefreshStatusInterval = null;
+let currentRestoreFilename = null;
+let currentDeleteFilename = null;
+
+// 页面加载完成后执行
+document.addEventListener('DOMContentLoaded', function() {
+    loadStatus();
+    loadHistory();
+    startAutoRefreshStatus();
+    startAutoRefreshHistory();
+
+    // 设置自动刷新复选框事件
+    document.getElementById('autoRefreshHistory').addEventListener('change', function() {
+        if (this.checked) {
+            startAutoRefreshHistory();
+        } else {
+            stopAutoRefreshHistory();
+        }
+    });
+
+    // 设置恢复确认复选框事件
+    document.getElementById('confirmRestore').addEventListener('change', function() {
+        document.getElementById('restoreBtn').disabled = !this.checked;
+    });
+
+    // 设置删除确认复选框事件
+    document.getElementById('confirmDelete').addEventListener('change', function() {
+        document.getElementById('deleteBtn').disabled = !this.checked;
+    });
+});
+
+// 加载状态信息
+async function loadStatus() {
+    try {
+        const response = await fetch('/api/auto_backup/status');
+        const data = await response.json();
+
+        if (data.success) {
+            updateStatusDisplay(data.status);
+            updateStatsDisplay(data.stats);
+        } else {
+            showAlert('加载状态失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('加载状态失败:', error);
+        showAlert('加载状态失败，请检查网络连接', 'danger');
+    }
+}
+
+// 更新状态显示
+function updateStatusDisplay(status) {
+    // 更新状态卡片
+    const statusText = document.getElementById('statusText');
+    const statusCard = document.getElementById('statusCard');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const restartBtn = document.getElementById('restartBtn');
+
+    if (status.running) {
+        statusText.innerHTML = '<span class="text-success">运行中</span>';
+        statusCard.classList.remove('bg-light');
+        statusCard.classList.add('bg-success', 'text-white');
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        restartBtn.disabled = false;
+    } else {
+        statusText.innerHTML = '<span class="text-danger">已停止</span>';
+        statusCard.classList.remove('bg-success', 'text-white');
+        statusCard.classList.add('bg-light');
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        restartBtn.disabled = true;
+    }
+
+    if (!status.enabled) {
+        statusText.innerHTML = '<span class="text-secondary">已禁用</span>';
+        startBtn.disabled = true;
+        stopBtn.disabled = true;
+        restartBtn.disabled = true;
+    }
+
+    // 更新下次备份时间
+    const nextBackupTime = document.getElementById('nextBackupTime');
+    const nextBackupRemaining = document.getElementById('nextBackupRemaining');
+
+    if (status.next_backup) {
+        const nextTime = new Date(status.next_backup);
+        nextBackupTime.textContent = nextTime.toLocaleString('zh-CN');
+
+        // 计算剩余时间
+        const now = new Date();
+        const diffMs = nextTime - now;
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+        nextBackupRemaining.textContent = `约 ${diffHours} 小时 ${diffMinutes} 分钟后`;
+    } else {
+        nextBackupTime.textContent = '-';
+        nextBackupRemaining.textContent = '';
+    }
+
+    // 更新上次备份时间
+    const lastBackupTime = document.getElementById('lastBackupTime');
+    const lastBackupAgo = document.getElementById('lastBackupAgo');
+
+    if (status.last_backup) {
+        const lastTime = new Date(status.last_backup);
+        lastBackupTime.textContent = lastTime.toLocaleString('zh-CN');
+
+        // 计算多久前
+        const now = new Date();
+        const diffMs = now - lastTime;
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+        if (diffDays > 0) {
+            lastBackupAgo.textContent = `${diffDays} 天前`;
+        } else if (diffHours > 0) {
+            lastBackupAgo.textContent = `${diffHours} 小时前`;
+        } else {
+            lastBackupAgo.textContent = '刚刚';
+        }
+    } else {
+        lastBackupTime.textContent = '从未备份';
+        lastBackupAgo.textContent = '';
+    }
+}
+
+// 更新统计显示
+function updateStatsDisplay(stats) {
+    if (!stats) return;
+
+    // 更新备份总数
+    document.getElementById('totalBackups').textContent = stats.total_backups || 0;
+
+    // 更新磁盘使用情况
+    if (stats.disk_usage) {
+        document.getElementById('diskUsage').textContent = stats.disk_usage.total_size || '0 MB';
+    }
+
+    // 更新月度统计表格
+    updateMonthlyStats(stats.monthly_stats);
+
+    // 更新图表
+    updateBackupStatsChart(stats.monthly_stats);
+}
+
+// 更新月度统计表格
+function updateMonthlyStats(monthlyStats) {
+    const tableBody = document.getElementById('monthlyStatsBody');
+
+    if (!monthlyStats || Object.keys(monthlyStats).length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="3" class="text-center text-muted">
+                    <i class="bi bi-database-x"></i> 暂无统计数据
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    let html = '';
+    const months = Object.keys(monthlyStats).sort().reverse();
+
+    months.forEach(month => {
+        const stat = monthlyStats[month];
+        const sizeMB = (stat.total_size / (1024 * 1024)).toFixed(1);
+
+        html += `
+            <tr>
+                <td>${month}</td>
+                <td>${stat.count} 次</td>
+                <td>${sizeMB} MB</td>
+            </tr>
+        `;
+    });
+
+    tableBody.innerHTML = html;
+}
+
+// 更新备份统计图表
+function updateBackupStatsChart(monthlyStats) {
+    const ctx = document.getElementById('backupStatsChart').getContext('2d');
+
+    if (backupStatsChart) {
+        backupStatsChart.destroy();
+    }
+
+    if (!monthlyStats || Object.keys(monthlyStats).length === 0) {
+        // 显示无数据消息
+        ctx.font = '16px Arial';
+        ctx.fillStyle = '#999';
+        ctx.textAlign = 'center';
+        ctx.fillText('暂无备份数据', ctx.canvas.width / 2, ctx.canvas.height / 2);
+        return;
+    }
+
+    // 准备数据
+    const months = Object.keys(monthlyStats).sort();
+    const counts = months.map(month => monthlyStats[month].count);
+
+    backupStatsChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: months,
+            datasets: [{
+                label: '备份次数',
+                data: counts,
+                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                borderColor: 'rgb(54, 162, 235)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            }
+        }
+    });
+}
+
+// 加载备份历史
+async function loadHistory() {
+    try {
+        const response = await fetch('/api/auto_backup/history');
+        const data = await response.json();
+
+        if (data.success) {
+            renderHistory(data.history);
+        } else {
+            showAlert('加载备份历史失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('加载备份历史失败:', error);
+    }
+}
+
+// 渲染备份历史
+function renderHistory(history) {
+    const tableBody = document.getElementById('historyTableBody');
+
+    if (!history || history.length === 0) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="5" class="text-center py-5">
+                    <i class="bi bi-clock-history" style="font-size: 3rem; color: #ccc;"></i>
+                    <p class="mt-3 text-muted">暂无备份历史记录</p>
+                </td>
+            </tr>
+        `;
+        document.getElementById('historyCount').textContent = '0';
+        return;
+    }
+
+    let html = '';
+
+    history.forEach(record => {
+        let statusBadge = '';
+        if (record.status.includes('成功')) {
+            statusBadge = '<span class="badge bg-success">成功</span>';
+        } else if (record.status.includes('失败')) {
+            statusBadge = '<span class="badge bg-danger">失败</span>';
+        } else {
+            statusBadge = '<span class="badge bg-secondary">未知</span>';
+        }
+
+        // 从记录中提取文件名（如果记录中没有完整的文件名）
+        let filename = record.filename;
+        if (!filename && record.time) {
+            // 尝试从时间戳生成文件名
+            const date = new Date(record.time);
+            const dateStr = date.toISOString().replace(/[:.]/g, '-').split('T')[0];
+            filename = `auto_backup_${dateStr}.zip`;
+        }
+
+        html += `
+            <tr>
+                <td><small>${record.time}</small></td>
+                <td>
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-file-earmark-zip text-primary me-2"></i>
+                        <small class="text-truncate" style="max-width: 200px;" title="${filename}">
+                            ${filename}
+                        </small>
+                    </div>
+                </td>
+                <td><small>${record.size}</small></td>
+                <td>
+                    ${statusBadge}
+                    <small class="ms-2">${record.status}</small>
+                </td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-info" onclick="viewBackupDetail('${filename}')"
+                                ${!record.status.includes('成功') ? 'disabled' : ''}>
+                            <i class="bi bi-eye"></i> 详情
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="downloadBackup('${filename}')">
+                            <i class="bi bi-download"></i> 下载
+                        </button>
+                        <button class="btn btn-outline-warning" onclick="confirmRestoreBackup('${filename}')"
+                                ${!record.status.includes('成功') ? 'disabled' : ''}>
+                            <i class="bi bi-arrow-counterclockwise"></i> 恢复
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="confirmDeleteBackup('${filename}')">
+                            <i class="bi bi-trash"></i> 删除
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    tableBody.innerHTML = html;
+    document.getElementById('historyCount').textContent = history.length;
+}
+
+// 查看备份详情
+async function viewBackupDetail(filename) {
+    try {
+        const response = await fetch('/api/backup/info/' + encodeURIComponent(filename));
+        const data = await response.json();
+
+        if (data.success) {
+            const info = data.info;
+            const detailContent = document.getElementById('backupDetailContent');
+
+            let html = `
+                <div class="mb-3">
+                    <strong>文件名:</strong> <code>${info.filename}</code>
+                </div>
+                <div class="mb-3">
+                    <strong>文件大小:</strong> ${info.size}
+                </div>
+                <div class="mb-3">
+                    <strong>创建时间:</strong> ${new Date(info.created_time).toLocaleString('zh-CN')}
+                </div>
+                <div class="mb-3">
+                    <strong>修改时间:</strong> ${new Date(info.modified_time).toLocaleString('zh-CN')}
+                </div>
+            `;
+
+            if (info.metadata) {
+                html += `
+                    <div class="mb-3">
+                        <strong>备份类型:</strong>
+                        <span class="badge ${info.metadata.backup_type === 'data' ? 'bg-info' : info.metadata.backup_type === 'schema' ? 'bg-warning' : 'bg-primary'}">
+                            ${info.metadata.backup_type === 'data' ? '仅数据' : info.metadata.backup_type === 'schema' ? '仅结构' : '完整'}
+                        </span>
+                    </div>
+                    <div class="mb-3">
+                        <strong>数据库:</strong> ${info.metadata.database || '未知'}
+                    </div>
+                    <div class="mb-3">
+                        <strong>说明:</strong> ${info.metadata.comment || '无说明'}
+                    </div>
+                    <div class="mb-3">
+                        <strong>表数量:</strong> ${info.metadata.tables || '未知'}
+                    </div>
+                `;
+            }
+
+            if (info.preview) {
+                html += `
+                    <div class="mb-3">
+                        <strong>文件预览:</strong>
+                        <pre class="bg-light p-3 rounded mt-2" style="max-height: 200px; overflow: auto;">
+${info.preview}
+                        </pre>
+                    </div>
+                `;
+            }
+
+            html += `
+                <div class="alert alert-info mt-3">
+                    <i class="bi bi-info-circle"></i>
+                    <small>文件路径: ${info.path}</small>
+                </div>
+            `;
+
+            detailContent.innerHTML = html;
+
+            const modal = new bootstrap.Modal(document.getElementById('backupDetailModal'));
+            modal.show();
+        } else {
+            showAlert('获取备份详情失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('获取备份详情失败:', error);
+        showAlert('获取备份详情失败，请检查网络连接', 'danger');
+    }
+}
+
+// 下载备份文件
+function downloadBackup(filename) {
+    window.open('/api/backup/download/' + encodeURIComponent(filename), '_blank');
+}
+
+// 确认恢复备份
+function confirmRestoreBackup(filename) {
+    currentRestoreFilename = filename;
+    document.getElementById('restoreFilename').value = filename;
+    document.getElementById('confirmRestore').checked = false;
+    document.getElementById('restoreBtn').disabled = true;
+
+    const modal = new bootstrap.Modal(document.getElementById('restoreConfirmModal'));
+    modal.show();
+}
+
+// 确认执行恢复
+async function confirmRestore() {
+    if (!currentRestoreFilename) {
+        showAlert('未选择备份文件', 'danger');
+        return;
+    }
+
+    if (!confirm('最后一次确认：此操作将覆盖当前数据库，是否继续？')) {
+        return;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('confirm', 'yes');
+
+        const response = await fetch(`/api/backup/restore/${encodeURIComponent(currentRestoreFilename)}`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('数据库恢复成功，请重新登录系统', 'success');
+
+            // 关闭模态框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('restoreConfirmModal'));
+            modal.hide();
+
+            // 延迟跳转，让用户看到提示信息
+            setTimeout(() => {
+                window.location.href = '/logout';
+            }, 2000);
+        } else {
+            showAlert('数据库恢复失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('恢复备份失败:', error);
+        showAlert('恢复备份失败，请检查网络连接', 'danger');
+    }
+}
+
+// 确认删除备份
+function confirmDeleteBackup(filename) {
+    currentDeleteFilename = filename;
+    document.getElementById('deleteFilename').textContent = filename;
+    document.getElementById('confirmDelete').checked = false;
+    document.getElementById('deleteBtn').disabled = true;
+
+    const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+    modal.show();
+}
+
+// 确认执行删除
+async function confirmDelete() {
+    if (!currentDeleteFilename) {
+        showAlert('未选择要删除的文件', 'danger');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/backup/delete/${encodeURIComponent(currentDeleteFilename)}`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('备份文件删除成功', 'success');
+            loadHistory();
+            loadStatus(); // 重新加载状态以更新备份统计
+
+            // 关闭模态框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal'));
+            modal.hide();
+        } else {
+            showAlert('删除备份文件失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('删除备份文件失败:', error);
+        showAlert('删除备份文件失败，请检查网络连接', 'danger');
+    }
+}
+
+// 显示设置模态框
+async function showSettingsModal() {
+    try {
+        const response = await fetch('/api/auto_backup/settings');
+        const data = await response.json();
+
+        if (data.success) {
+            // 填充表单
+            document.getElementById('enabled').checked = data.settings.enabled;
+            document.getElementById('backupTime').value = data.settings.time;
+            document.getElementById('backupType').value = data.settings.backup_type;
+            document.getElementById('keepDays').value = data.settings.keep_days;
+            document.getElementById('maxBackups').value = data.settings.max_backups;
+            document.getElementById('notifyOnError').checked = data.settings.notify_on_error;
+
+            const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
+            modal.show();
+        } else {
+            showAlert('加载设置失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('加载设置失败:', error);
+        showAlert('加载设置失败，请检查网络连接', 'danger');
+    }
+}
+
+// 保存设置
+async function saveSettings() {
+    const settings = {
+        enabled: document.getElementById('enabled').checked,
+        time: document.getElementById('backupTime').value,
+        backup_type: document.getElementById('backupType').value,
+        keep_days: parseInt(document.getElementById('keepDays').value),
+        max_backups: parseInt(document.getElementById('maxBackups').value),
+        notify_on_error: document.getElementById('notifyOnError').checked
+    };
+
+    try {
+        const response = await fetch('/api/auto_backup/settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(settings)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('设置已保存', 'success');
+            loadStatus();
+
+            // 关闭模态框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('settingsModal'));
+            modal.hide();
+        } else {
+            showAlert('保存设置失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('保存设置失败:', error);
+        showAlert('保存设置失败，请检查网络连接', 'danger');
+    }
+}
+
+// 启动自动备份
+async function startAutoBackup() {
+    if (!confirm('确定要启动自动备份吗？')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/auto_backup/start', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('自动备份已启动', 'success');
+            loadStatus();
+        } else {
+            showAlert('启动失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('启动自动备份失败:', error);
+        showAlert('启动失败，请检查网络连接', 'danger');
+    }
+}
+
+// 停止自动备份
+async function stopAutoBackup() {
+    if (!confirm('确定要停止自动备份吗？')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/auto_backup/stop', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('自动备份已停止', 'success');
+            loadStatus();
+        } else {
+            showAlert('停止失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('停止自动备份失败:', error);
+        showAlert('停止失败，请检查网络连接', 'danger');
+    }
+}
+
+// 重启自动备份
+async function restartAutoBackup() {
+    if (!confirm('确定要重启自动备份吗？')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/auto_backup/restart', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('自动备份已重启', 'success');
+            loadStatus();
+        } else {
+            showAlert('重启失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('重启自动备份失败:', error);
+        showAlert('重启失败，请检查网络连接', 'danger');
+    }
+}
+
+// 显示立即备份确认模态框
+function backupNow() {
+    const modal = new bootstrap.Modal(document.getElementById('backupNowModal'));
+    modal.show();
+}
+
+// 确认立即备份
+async function confirmBackupNow() {
+    try {
+        const response = await fetch('/api/auto_backup/backup_now', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert('备份任务已开始执行', 'success');
+
+            // 关闭模态框
+            const modal = bootstrap.Modal.getInstance(document.getElementById('backupNowModal'));
+            modal.hide();
+
+            // 刷新状态和历史
+            setTimeout(() => {
+                loadStatus();
+                loadHistory();
+            }, 2000);
+        } else {
+            showAlert('备份失败: ' + data.message, 'danger');
+        }
+    } catch (error) {
+        console.error('立即备份失败:', error);
+        showAlert('备份失败，请检查网络连接', 'danger');
+    }
+}
+
+// 刷新状态
+function refreshStatus() {
+    loadStatus();
+    loadHistory();
+    showAlert('状态已刷新', 'info');
+}
+
+// 开始自动刷新状态（每10秒）
+function startAutoRefreshStatus() {
+    stopAutoRefreshStatus();
+    autoRefreshStatusInterval = setInterval(loadStatus, 10000);
+}
+
+// 停止自动刷新状态
+function stopAutoRefreshStatus() {
+    if (autoRefreshStatusInterval) {
+        clearInterval(autoRefreshStatusInterval);
+        autoRefreshStatusInterval = null;
+    }
+}
+
+// 开始自动刷新历史（每30秒）
+function startAutoRefreshHistory() {
+    stopAutoRefreshHistory();
+    autoRefreshHistoryInterval = setInterval(loadHistory, 30000);
+}
+
+// 停止自动刷新历史
+function stopAutoRefreshHistory() {
+    if (autoRefreshHistoryInterval) {
+        clearInterval(autoRefreshHistoryInterval);
+        autoRefreshHistoryInterval = null;
+    }
+}
+
+// 显示提示消息
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 80px; right: 20px; z-index: 1050;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+    document.body.appendChild(alertDiv);
+
+    // 3秒后自动消失
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 3000);
+}
+</script>
+{% endblock %}

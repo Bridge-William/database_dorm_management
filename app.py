@@ -22,11 +22,13 @@ import shutil
 import re
 from pathlib import Path
 from backup import DatabaseBackup  # 添加备份模块导入
+# 在app.py文件顶部的导入部分添加
+from auto_backup import AutoBackupScheduler
+import sys
 
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-in-production'
-
 
 
 # ==================== 日志配置 ====================
@@ -96,10 +98,19 @@ def log_operation(operation_type):
 
 # ==================== 创建必要的目录 ====================
 # 添加在日志配置之后，应用启动时间之前
-required_dirs = ['logs', 'backups']
+# required_dirs = ['logs', 'backups']
+# for dir_name in required_dirs:
+#     if not os.path.exists(dir_name):
+#         os.makedirs(dir_name)
+#         logger.info(f"创建目录: {dir_name}")
+#     else:
+#         logger.debug(f"目录已存在: {dir_name}")
+
+required_dirs = ['logs', 'backups', 'temp']
 for dir_name in required_dirs:
-    if not os.path.exists(dir_name):
-        os.makedirs(dir_name)
+    dir_path = Path(dir_name)
+    if not dir_path.exists():
+        dir_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"创建目录: {dir_name}")
     else:
         logger.debug(f"目录已存在: {dir_name}")
@@ -112,6 +123,26 @@ app.config['MYSQL_DB'] = 'dorm_management'
 app.config['MYSQL_CURSORCLASS'] = 'DictCursor'
 
 mysql = MySQL(app)
+
+# ==================== 自动备份调度器 ====================
+
+# 创建自动备份调度器实例
+auto_backup_scheduler = AutoBackupScheduler(app.config, app)
+
+def init_auto_backup():
+    """初始化自动备份"""
+    try:
+        # 检查是否启用自动备份
+        if app.config.get('AUTO_BACKUP_ENABLED', True):
+            success = auto_backup_scheduler.start()
+            if success:
+                logger.info("自动备份调度器初始化成功")
+            else:
+                logger.warning("自动备份调度器初始化失败")
+        else:
+            logger.info("自动备份功能已禁用")
+    except Exception as e:
+        logger.error(f"初始化自动备份失败: {str(e)}")
 
 # 应用启动时间
 app_start_time = datetime.now()
@@ -2311,6 +2342,244 @@ def api_restore_backup(filename):
         }), 500
 
 
+# ==================== 自动备份管理 ====================
+
+@app.route('/auto_backup')
+@admin_required
+def auto_backup_management():
+    """自动备份管理页面"""
+    logger.info(f"访问自动备份管理 - 管理员: {session['user_id']}")
+
+    # 获取调度器状态
+    status = auto_backup_scheduler.get_status()
+
+    # 获取备份统计
+    stats = auto_backup_scheduler.get_backup_stats()
+
+    return render_template('auto_backup.html',
+                           status=status,
+                           stats=stats)
+
+
+@app.route('/api/auto_backup/status')
+@admin_required
+def api_auto_backup_status():
+    """获取自动备份状态API"""
+    try:
+        status = auto_backup_scheduler.get_status()
+        stats = auto_backup_scheduler.get_backup_stats()
+
+        return jsonify({
+            'success': True,
+            'status': status,
+            'stats': stats
+        })
+
+    except Exception as e:
+        logger.error(f"获取自动备份状态失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'获取状态失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/auto_backup/start', methods=['POST'])
+@admin_required
+@log_operation("启动自动备份")
+def api_start_auto_backup():
+    """启动自动备份API"""
+    try:
+        success = auto_backup_scheduler.start()
+
+        if success:
+            logger.info(f"手动启动自动备份 - 操作者: {session['user_id']}")
+            return jsonify({
+                'success': True,
+                'message': '自动备份已启动'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '启动自动备份失败'
+            })
+
+    except Exception as e:
+        logger.error(f"启动自动备份失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'启动失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/auto_backup/stop', methods=['POST'])
+@admin_required
+@log_operation("停止自动备份")
+def api_stop_auto_backup():
+    """停止自动备份API"""
+    try:
+        success = auto_backup_scheduler.stop()
+
+        if success:
+            logger.info(f"手动停止自动备份 - 操作者: {session['user_id']}")
+            return jsonify({
+                'success': True,
+                'message': '自动备份已停止'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '停止自动备份失败'
+            })
+
+    except Exception as e:
+        logger.error(f"停止自动备份失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'停止失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/auto_backup/restart', methods=['POST'])
+@admin_required
+@log_operation("重启自动备份")
+def api_restart_auto_backup():
+    """重启自动备份API"""
+    try:
+        success = auto_backup_scheduler.restart()
+
+        if success:
+            logger.info(f"手动重启自动备份 - 操作者: {session['user_id']}")
+            return jsonify({
+                'success': True,
+                'message': '自动备份已重启'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': '重启自动备份失败'
+            })
+
+    except Exception as e:
+        logger.error(f"重启自动备份失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'重启失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/auto_backup/backup_now', methods=['POST'])
+@admin_required
+@log_operation("立即执行备份")
+def api_backup_now():
+    """立即执行备份API"""
+    try:
+        result = auto_backup_scheduler.manual_backup_now()
+
+        if result['success']:
+            logger.info(f"手动执行立即备份 - 操作者: {session['user_id']}")
+
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"立即备份执行失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'立即备份失败: {str(e)}'
+        }), 500
+
+
+@app.route('/api/auto_backup/settings', methods=['GET', 'POST'])
+@admin_required
+def api_auto_backup_settings():
+    """自动备份设置API"""
+    if request.method == 'GET':
+        try:
+            status = auto_backup_scheduler.get_status()
+            return jsonify({
+                'success': True,
+                'settings': status['settings']
+            })
+        except Exception as e:
+            logger.error(f"获取自动备份设置失败: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': f'获取设置失败: {str(e)}'
+            }), 500
+
+    elif request.method == 'POST':
+        try:
+            settings = request.json
+
+            if not settings:
+                return jsonify({
+                    'success': False,
+                    'message': '设置数据不能为空'
+                }), 400
+
+            # 验证时间格式
+            if 'time' in settings:
+                import re
+                if not re.match(r'^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$', settings['time']):
+                    return jsonify({
+                        'success': False,
+                        'message': '时间格式不正确，应为 HH:MM'
+                    }), 400
+
+            # 验证备份类型
+            if 'backup_type' in settings:
+                if settings['backup_type'] not in ['full', 'data', 'schema']:
+                    return jsonify({
+                        'success': False,
+                        'message': '备份类型不正确'
+                    }), 400
+
+            # 更新设置
+            success = auto_backup_scheduler.update_settings(settings)
+
+            if success:
+                logger.info(f"更新自动备份设置 - 操作者: {session['user_id']}, 设置: {settings}")
+                return jsonify({
+                    'success': True,
+                    'message': '设置已更新'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': '更新设置失败'
+                })
+
+        except Exception as e:
+            logger.error(f"更新自动备份设置失败: {str(e)}")
+            return jsonify({
+                'success': False,
+                'message': f'更新设置失败: {str(e)}'
+            }), 500
+
+
+@app.route('/api/auto_backup/history')
+@admin_required
+def api_auto_backup_history():
+    """获取备份历史API"""
+    try:
+        history = auto_backup_scheduler._get_backup_history()
+
+        # 反转顺序，最新的在前面
+        history.reverse()
+
+        return jsonify({
+            'success': True,
+            'history': history,
+            'count': len(history)
+        })
+
+    except Exception as e:
+        logger.error(f"获取备份历史失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f'获取历史失败: {str(e)}'
+        }), 500
+
+
 # ==================== API接口 ====================
 
 @app.route('/api/rooms/<building_id>')
@@ -2721,18 +2990,37 @@ if __name__ == '__main__':
     logger.info("学生公寓交费管理系统启动")
     logger.info(f"启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info(f"日志目录: {os.path.abspath('logs')}")
+    logger.info(f"备份目录: {os.path.abspath('backups')}")
     logger.info(f"数据库配置: {app.config['MYSQL_DB']}@{app.config['MYSQL_HOST']}")
     logger.info("=" * 50)
-    
+
     # 创建必要的模板文件
     try:
         # 检查是否缺少必要的模板文件
-        required_templates = ['logs.html', 'system_status.html']
+        required_templates = ['logs.html', 'system_status.html', 'auto_backup.html', 'backup.html']
         for template in required_templates:
             template_path = os.path.join('templates', template)
             if not os.path.exists(template_path):
                 logger.warning(f"缺少模板文件: {template}，请确保已创建")
     except Exception as e:
         logger.error(f"检查模板文件失败: {str(e)}")
-    
+
+    # 初始化自动备份
+    logger.info("初始化自动备份功能...")
+    init_auto_backup()
+
+    # 添加优雅关闭处理
+    import signal
+
+
+    def shutdown_handler(signum, frame):
+        logger.info("接收到关闭信号，正在停止自动备份调度器...")
+        auto_backup_scheduler.stop()
+        logger.info("系统正在关闭...")
+        sys.exit(0)
+
+
+    signal.signal(signal.SIGINT, shutdown_handler)
+    signal.signal(signal.SIGTERM, shutdown_handler)
+
     app.run(debug=True, host='0.0.0.0', port=5000)
