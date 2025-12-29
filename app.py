@@ -2282,7 +2282,7 @@ def api_system_status():
             size_mb = size_bytes / (1024 * 1024)
             log_size = f"{size_mb:.2f} MB"
 
-        # 获取在线用户数（简化处理）
+        # 获取在线用户数
         online_users = 1  # 当前用户
 
         # 构建系统警告
