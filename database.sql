@@ -67,7 +67,7 @@ CREATE TABLE payments (
     INDEX idx_type (payment_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='交费记录表';
 
--- 5. 用户表（修改：使用用户ID作为唯一标识，添加职务字段）
+-- 5. 用户表
 CREATE TABLE users (
     user_id VARCHAR(20) PRIMARY KEY COMMENT '用户ID(学校身份编号)',
     password VARCHAR(255) NOT NULL COMMENT '密码(加密)',
@@ -82,14 +82,14 @@ CREATE TABLE users (
     INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
 
--- 6. 用户注册申请表（修改：使用用户ID作为标识，添加职务和备注字段）
+-- 6. 用户注册申请表
 CREATE TABLE user_requests (
     request_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '申请ID',
     user_id VARCHAR(20) NOT NULL COMMENT '用户ID(学校身份编号)',
     password VARCHAR(255) NOT NULL COMMENT '密码(加密)',
     realname VARCHAR(50) NOT NULL COMMENT '真实姓名',
     permission ENUM('管理员', '教师') NOT NULL DEFAULT '教师' COMMENT '申请的权限',
-    job_title ENUM('教师', '工作人员') NOT NULL COMMENT '申请的职务',
+    job_title ENUM('教师', '工作人员') NOT NULL COMMENT '职务',
     email VARCHAR(100) COMMENT '邮箱',
     phone VARCHAR(20) COMMENT '手机号',
     remark VARCHAR(200) COMMENT '申请备注',
@@ -190,13 +190,13 @@ INSERT INTO user_requests (user_id, password, realname, permission, job_title, e
 ('2023010008', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '陈管理员', '管理员', '工作人员', 'chen@example.com', '13800000008', '申请管理员权限，负责系统维护', '已拒绝', '管理员权限申请需要更多理由', '2023010001', '系统管理员', '2025-09-02 14:15:00'),
 ('2023010009', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '吴工作人员', '教师', '工作人员', 'wu@example.com', '13800000009', '申请工作人员权限，负责公寓日常管理', '待审批', NULL, NULL, NULL, NULL);
 
--- 插入示例通知数据（注意：publisher_id需要与users表中的user_id对应）
+-- 插入示例通知数据
 INSERT INTO announcements (title, content, publisher_id, publisher_name, permission, created_at) VALUES
-('新学期住宿费缴纳通知', '各位同学请注意：新学期住宿费缴纳已经开始，请于9月10日前完成缴费，逾期将产生滞纳金。', '2023010001', '系统管理员', '全部', '2025-09-01 09:00:00'),
-('公寓楼消防安全检查', '根据学校安排，将于9月15日对各公寓楼进行消防安全检查，请各寝室提前做好准备。', '2023010001', '系统管理员', '全部', '2025-09-02 10:30:00'),
+('新学期住宿费缴纳通知', '各位老师请注意：新学期住宿费缴纳已经开始，请通知各位同学于9月10日前完成缴费，逾期将产生滞纳金。', '2023010001', '系统管理员', '全部', '2025-09-01 09:00:00'),
+('公寓楼消防安全检查', '根据学校安排，将于9月15日对各公寓楼进行消防安全检查，请通知各寝室提前做好准备。', '2023010001', '系统管理员', '全部', '2025-09-02 10:30:00'),
 ('教师会议通知', '本周五下午2点在行政楼会议室召开教师工作会议，请各位教师准时参加。', '2023010001', '系统管理员', '教师', '2025-09-03 14:00:00'),
 ('管理员系统培训', '定于9月10日下午3点进行系统管理员操作培训，请各位管理员准时参加。', '2023010001', '系统管理员', '管理员', '2025-09-03 16:00:00'),
-('节假日宿舍安全提醒', '中秋、国庆假期将至，请各位同学离校前关闭水电、锁好门窗，注意宿舍安全。', '2023010002', '张老师', '全部', '2025-09-04 11:00:00'),
+('节假日宿舍安全提醒', '中秋、国庆假期将至，请提醒各位同学离校前关闭水电、锁好门窗，注意宿舍安全。', '2023010002', '张老师', '全部', '2025-09-04 11:00:00'),
 ('寝室卫生评比通知', '本月寝室卫生评比将于9月20日开始，请各寝室做好清洁工作。', '2023010003', '李老师', '全部', '2025-09-05 09:30:00'),
 ('关于系统升级的通知', '本系统将于本周六凌晨0:00-2:00进行维护升级，期间系统将暂停服务，请提前做好安排。', '2023010001', '系统管理员', '全部', '2025-09-06 15:00:00');
 

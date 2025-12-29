@@ -1,7 +1,7 @@
 """
 学生公寓交费管理系统 - Flask应用
-作者: William
-日期: 2025
+作者: 翁联桥
+日期: 2025-12-29
 """
 
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_file
@@ -21,8 +21,7 @@ import platform
 import shutil
 import re
 from pathlib import Path
-from backup import DatabaseBackup  # 添加备份模块导入
-# 在app.py文件顶部的导入部分添加
+from backup import DatabaseBackup
 from auto_backup import AutoBackupScheduler
 import sys
 
@@ -167,42 +166,6 @@ def verify_password(stored_password, provided_password):
     return False
 
 
-# def generate_next_user_id():
-#     """生成下一个用户ID，格式：U + 年月(4位) + 4位顺序号"""
-#     cur = mysql.connection.cursor()
-#
-#     # 获取当前年月
-#     current_year_month = datetime.now().strftime("%y%m")  # 格式：2501（25年1月）
-#
-#     # 查询当前年月最大的用户ID
-#     cur.execute("""
-#         SELECT user_id FROM users
-#         WHERE user_id LIKE %s
-#         ORDER BY user_id DESC
-#         LIMIT 1
-#     """, (f'U{current_year_month}%',))
-#
-#     result = cur.fetchone()
-#     cur.close()
-#
-#     if result:
-#         last_id = result['user_id']
-#         # 提取最后4位数字
-#         last_number = int(last_id[-4:])
-#         next_number = last_number + 1
-#     else:
-#         # 该年月还没有用户，从0001开始
-#         next_number = 1
-#
-#     # 格式化为4位数字，例如：0001, 0002, ... 9999
-#     next_user_id = f'U{current_year_month}{next_number:04d}'
-#
-#     # 如果超过9999，则使用更大的数字，但保持4位显示
-#     if next_number > 9999:
-#         next_user_id = f'U{current_year_month}{next_number}'
-#
-#     return next_user_id
-
 def validate_user_id(user_id):
     """验证用户ID格式：四位年份+两位部门+四位顺序号"""
     if not user_id or len(user_id) != 10:
@@ -213,6 +176,7 @@ def validate_user_id(user_id):
     if int(year) < 2000 or int(year) > 2050:  # 假设年份在2000-2050之间
         return False
     return True
+
 
 def login_required(f):
     """登录验证装饰器"""
