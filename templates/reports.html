@@ -1,6 +1,6 @@
 <!--
   文件名: templates/reports.html
-  说明: 统计报表页面 - 完整代码（修复对齐问题）
+  说明: 统计报表页面 - 修复对齐问题并优化排版
 -->
 {% extends "base.html" %}
 
@@ -19,23 +19,25 @@
             <table class="table table-bordered table-hover">
                 <thead class="table-light">
                     <tr>
-                        <th width="20%">公寓楼</th>
-                        <th width="20%">入住学生数</th>
-                        <th width="20%">交费笔数</th>
-                        <th width="20%">人均交费</th>
-                        <th width="20%" class="text-end">收费总额</th>
+                        <th class="text-center" style="width: 15%">公寓楼</th>
+                        <th class="text-center" style="width: 12%">入住学生数</th>
+                        <th class="text-center" style="width: 12%">交费笔数</th>
+                        <th class="text-center" style="width: 15%">人均交费</th>
+                        <th class="text-center" style="width: 15%">楼层数</th>
+                        <th class="text-center" style="width: 15%">房间数</th>
+                        <th class="text-end" style="width: 16%">收费总额</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for stat in building_stats %}
                     <tr>
-                        <td>
+                        <td class="text-center">
                             <strong class="text-primary">{{ stat.building_id }}</strong>
                         </td>
                         <td class="text-center">
-                            <span class="badge bg-info">{{ stat.student_count }} 人</span>
+                            <span class="badge bg-info">{{ stat.student_count }}人</span>
                         </td>
-                        <td class="text-center">{{ stat.payment_count }} 笔</td>
+                        <td class="text-center">{{ stat.payment_count }}笔</td>
                         <td class="text-center">
                             {% if stat.student_count > 0 %}
                             ¥{{ "%.2f"|format(stat.total_amount / stat.student_count) }}
@@ -43,8 +45,10 @@
                             -
                             {% endif %}
                         </td>
+                        <td class="text-center">{{ stat.floors or '-' }}</td>
+                        <td class="text-center">{{ stat.rooms_count or '-' }}</td>
                         <td class="text-end">
-                            <strong class="text-success" style="font-size: 1.1em;">
+                            <strong class="text-success">
                                 ¥{{ "%.2f"|format(stat.total_amount) }}
                             </strong>
                         </td>
@@ -52,9 +56,11 @@
                     {% endfor %}
                     {% if building_stats %}
                     <tr class="table-secondary fw-bold">
-                        <td>合计</td>
-                        <td class="text-center">{{ building_stats|sum(attribute='student_count') }} 人</td>
-                        <td class="text-center">{{ building_stats|sum(attribute='payment_count') }} 笔</td>
+                        <td class="text-center">合计</td>
+                        <td class="text-center">{{ building_stats|sum(attribute='student_count') }}人</td>
+                        <td class="text-center">{{ building_stats|sum(attribute='payment_count') }}笔</td>
+                        <td class="text-center">-</td>
+                        <td class="text-center">-</td>
                         <td class="text-center">-</td>
                         <td class="text-end text-success">
                             ¥{{ "%.2f"|format(building_stats|sum(attribute='total_amount')) }}
@@ -77,21 +83,23 @@
             <table class="table table-bordered table-hover">
                 <thead class="table-light">
                     <tr>
-                        <th width="30%">专业</th>
-                        <th width="15%">学生人数</th>
-                        <th width="15%">交费笔数</th>
-                        <th width="20%">人均交费</th>
-                        <th width="20%" class="text-end">收费总额</th>
+                        <th class="text-start" style="width: 25%">专业</th>
+                        <th class="text-center" style="width: 15%">学生人数</th>
+                        <th class="text-center" style="width: 15%">交费笔数</th>
+                        <th class="text-center" style="width: 20%">人均交费</th>
+                        <th class="text-end" style="width: 25%">收费总额</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for stat in major_stats %}
                     <tr>
-                        <td><strong>{{ stat.major }}</strong></td>
+                        <td class="text-start"><strong>{{ stat.major }}</strong></td>
                         <td class="text-center">
                             <span class="badge bg-primary">{{ stat.student_count }}</span>
                         </td>
-                        <td class="text-center">{{ stat.payment_count }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-secondary">{{ stat.payment_count }}</span>
+                        </td>
                         <td class="text-center">
                             <strong class="text-info">
                                 ¥{{ "%.2f"|format(stat.total_amount / stat.student_count if stat.student_count > 0 else 0) }}
@@ -106,9 +114,9 @@
                     {% endfor %}
                     {% if major_stats %}
                     <tr class="table-secondary fw-bold">
-                        <td>合计</td>
-                        <td class="text-center">{{ major_stats|sum(attribute='student_count') }} 人</td>
-                        <td class="text-center">{{ major_stats|sum(attribute='payment_count') }} 笔</td>
+                        <td class="text-start">合计</td>
+                        <td class="text-center">{{ major_stats|sum(attribute='student_count') }}人</td>
+                        <td class="text-center">{{ major_stats|sum(attribute='payment_count') }}笔</td>
                         <td class="text-center">-</td>
                         <td class="text-end text-success">
                             ¥{{ "%.2f"|format(major_stats|sum(attribute='total_amount')) }}
@@ -137,16 +145,16 @@
                     <table class="table table-sm table-hover">
                         <thead>
                             <tr>
-                                <th>月份</th>
-                                <th>类型</th>
+                                <th class="text-start">月份</th>
+                                <th class="text-center">类型</th>
                                 <th class="text-end">金额</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for stat in monthly_stats[:12] %}
                             <tr>
-                                <td><small>{{ stat.month }}</small></td>
-                                <td>
+                                <td class="text-start"><small>{{ stat.month }}</small></td>
+                                <td class="text-center">
                                     <span class="badge badge-sm bg-{% if stat.payment_type == '住宿费' %}primary{% elif stat.payment_type == '水电费' %}info{% else %}secondary{% endif %}">
                                         {{ stat.payment_type }}
                                     </span>
@@ -172,36 +180,41 @@
         <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> 欠费提醒</h5>
     </div>
     <div class="card-body">
-        {% if arrears_students %}
-        <div class="alert alert-warning">
+        <div class="alert alert-info mb-3">
             <i class="bi bi-info-circle"></i>
-            共有 <strong>{{ arrears_students|length }}</strong> 名学生存在欠费情况，请及时催缴
+            <strong>欠费说明：</strong> 以下为住宿费未缴清的学生名单。如需处理欠费，请在"交费管理"页面为该学生添加住宿费记录。
+        </div>
+
+        {% if arrears_students %}
+        <div class="alert alert-warning mb-3">
+            <i class="bi bi-exclamation-triangle"></i>
+            共有 <strong>{{ arrears_students|length }}</strong> 名学生存在欠费情况
         </div>
         <div class="table-responsive">
             <table class="table table-hover">
                 <thead class="table-light">
                     <tr>
-                        <th width="10%">学号</th>
-                        <th width="10%">姓名</th>
-                        <th width="20%">专业班级</th>
-                        <th width="12%">公寓-寝室</th>
-                        <th width="12%" class="text-end">应交费用</th>
-                        <th width="12%" class="text-end">已交费用</th>
-                        <th width="12%" class="text-end">欠费金额</th>
-                        <th width="12%" class="text-center">欠费状态</th>
+                        <th class="text-start" style="width: 10%">学号</th>
+                        <th class="text-start" style="width: 8%">姓名</th>
+                        <th class="text-start" style="width: 20%">专业班级</th>
+                        <th class="text-center" style="width: 12%">公寓-寝室</th>
+                        <th class="text-end" style="width: 12%">应交费用</th>
+                        <th class="text-end" style="width: 12%">已交费用</th>
+                        <th class="text-end" style="width: 12%">欠费金额</th>
+                        <th class="text-center" style="width: 14%">操作</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for student in arrears_students %}
                     {% set arrears_amount = (student.should_pay or 0) - student.paid_amount %}
                     <tr>
-                        <td><small>{{ student.student_id }}</small></td>
-                        <td><strong>{{ student.name }}</strong></td>
-                        <td>
+                        <td class="text-start"><small>{{ student.student_id }}</small></td>
+                        <td class="text-start"><strong>{{ student.name }}</strong></td>
+                        <td class="text-start">
                             <div>{{ student.major }}</div>
                             <small class="text-muted">{{ student.class }}</small>
                         </td>
-                        <td>
+                        <td class="text-center">
                             {% if student.building_id and student.room_id %}
                             <span class="badge bg-secondary">
                                 {{ student.building_id }}-{{ student.room_id }}
@@ -224,13 +237,11 @@
                             </strong>
                         </td>
                         <td class="text-center">
-                            {% if arrears_amount >= 1000 %}
-                            <span class="badge bg-danger">严重</span>
-                            {% elif arrears_amount >= 500 %}
-                            <span class="badge bg-warning">一般</span>
-                            {% else %}
-                            <span class="badge bg-info">轻微</span>
-                            {% endif %}
+                            <a href="{{ url_for('payments') }}?student_id={{ student.student_id }}"
+                               class="btn btn-sm btn-primary"
+                               title="为此学生添加交费记录">
+                                <i class="bi bi-cash-coin"></i> 交费
+                            </a>
                         </td>
                     </tr>
                     {% endfor %}
@@ -238,7 +249,7 @@
                 <tfoot class="table-secondary fw-bold">
                     <tr>
                         <td colspan="5" class="text-end">欠费总计：</td>
-                        <td colspan="3" class="text-end text-danger" style="font-size: 1.1em;">
+                        <td colspan="3" class="text-end text-danger">
                             ¥{{ "%.2f"|format(arrears_students|sum(attribute='should_pay') - arrears_students|sum(attribute='paid_amount')) }}
                         </td>
                     </tr>

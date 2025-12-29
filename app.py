@@ -1651,17 +1651,20 @@ def reports():
     """)
     monthly_stats = cur.fetchall()
 
-    # 各公寓楼统计
+    # 各公寓楼统计 - 修改查询以包含房间数信息
     cur.execute("""
         SELECT 
             b.building_id,
+            b.floors,
+            b.rooms_count,
+            b.commission_date,
             COUNT(DISTINCT s.student_id) as student_count,
             COUNT(DISTINCT p.payment_id) as payment_count,
             COALESCE(SUM(p.amount), 0) as total_amount
         FROM buildings b
         LEFT JOIN students s ON b.building_id = s.building_id
         LEFT JOIN payments p ON b.building_id = p.building_id
-        GROUP BY b.building_id
+        GROUP BY b.building_id, b.floors, b.rooms_count, b.commission_date
         ORDER BY b.building_id
     """)
     building_stats = cur.fetchall()
@@ -1683,26 +1686,31 @@ def reports():
     # 欠费学生（假设每学期住宿费1200，已到期但未交费的）
     cur.execute("""
         SELECT s.student_id, s.name, s.major, s.class, s.building_id, s.room_id,
-               COALESCE(SUM(p.amount), 0) as paid_amount,
-               r.fee as should_pay
+               COALESCE(SUM(CASE WHEN p.payment_type = '住宿费' THEN p.amount ELSE 0 END), 0) as paid_amount,
+               COALESCE(r.fee, 1200) as should_pay
         FROM students s
         LEFT JOIN rooms r ON s.room_id = r.room_id
-        LEFT JOIN payments p ON s.student_id = p.student_id AND p.payment_type = '住宿费'
+        LEFT JOIN payments p ON s.student_id = p.student_id 
         GROUP BY s.student_id, s.name, s.major, s.class, s.building_id, s.room_id, r.fee
-        HAVING paid_amount < should_pay OR paid_amount IS NULL
-        ORDER BY s.student_id
+        HAVING paid_amount < should_pay OR (r.fee IS NOT NULL AND paid_amount = 0)
+        ORDER BY (should_pay - paid_amount) DESC
         LIMIT 20
     """)
     arrears_students = cur.fetchall()
 
     cur.close()
 
+    # 获取当前时间
+    from datetime import datetime
+    now = datetime.now()
+
     logger.info(f"统计报表查询完成 - 月度统计: {len(monthly_stats)}条")
     return render_template('reports.html',
                            monthly_stats=monthly_stats,
                            building_stats=building_stats,
                            major_stats=major_stats,
-                           arrears_students=arrears_students)
+                           arrears_students=arrears_students,
+                           now=now)  # 添加 now 变量
 
 
 # ==================== 用户管理 ====================
