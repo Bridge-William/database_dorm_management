@@ -133,7 +133,12 @@
                         data-email="{{ req.email }}"
                         data-phone="{{ req.phone }}"
                         data-remark="{{ req.remark }}"
-                        data-created-at="{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}">
+                        data-status="{{ req.status }}"
+                        data-admin-remark="{{ req.admin_remark or '' }}"
+                        data-approver-id="{{ req.approver_id or '' }}"
+                        data-approver-name="{{ req.approver_name or '' }}"
+                        data-approved-at="{% if req.approved_at %}{{ req.approved_at.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}{% endif %}"
+                        data-created-at="{{ req.created_at.strftime('%Y-%m-%d %H:%M:%S') }}">
                         <td><small class="text-muted">{{ req.request_id }}</small></td>
                         <td>
                             <strong>{{ req.user_id }}</strong>
@@ -314,6 +319,26 @@
                         <th>申请时间</th>
                         <td id="detailCreatedAt"></td>
                     </tr>
+                    <tr>
+                        <th>审批人ID</th>
+                        <td id="detailApproverId"></td>
+                    </tr>
+                    <tr>
+                        <th>审批人姓名</th>
+                        <td id="detailApproverName"></td>
+                    </tr>
+                    <tr>
+                        <th>审批时间</th>
+                        <td id="detailApprovedAt"></td>
+                    </tr>
+                    <tr>
+                        <th>审批状态</th>
+                        <td id="detailStatus"></td>
+                    </tr>
+                    <tr>
+                        <th>管理员备注</th>
+                        <td id="detailAdminRemark"></td>
+                    </tr>
                 </table>
             </div>
             <div class="modal-footer">
@@ -368,6 +393,23 @@ function viewRequestDetails(requestId) {
     document.getElementById('detailPhone').textContent = row.dataset.phone || '无';
     document.getElementById('detailRemark').textContent = row.dataset.remark || '无';
     document.getElementById('detailCreatedAt').textContent = row.dataset.createdAt;
+
+    // 新增的审批信息字段
+    document.getElementById('detailApproverId').textContent = row.dataset.approverId || '未审批';
+    document.getElementById('detailApproverName').textContent = row.dataset.approverName || '未审批';
+    document.getElementById('detailApprovedAt').textContent = row.dataset.approvedAt || '未审批';
+    document.getElementById('detailStatus').textContent = row.dataset.status;
+    document.getElementById('detailAdminRemark').textContent = row.dataset.adminRemark || '无';
+
+    // 根据状态设置样式
+    const statusCell = document.getElementById('detailStatus');
+    if (row.dataset.status === '已批准') {
+        statusCell.className = 'text-success fw-bold';
+    } else if (row.dataset.status === '已拒绝') {
+        statusCell.className = 'text-danger fw-bold';
+    } else {
+        statusCell.className = 'text-warning fw-bold';
+    }
 
     // 显示模态框
     const modal = new bootstrap.Modal(document.getElementById('viewDetailsModal'));

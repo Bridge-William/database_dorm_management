@@ -681,18 +681,21 @@ def approve_user_request(request_id):
               granted_permission, user_request['job_title'], user_request.get('email', ''),
               user_request.get('phone', ''), user_request.get('remark', '')))
 
-        # 更新申请状态，记录授予的权限
+        # 更新申请状态，记录授予的权限和审批人信息
         cur.execute("""
             UPDATE user_requests 
             SET status = '已批准', 
-                admin_remark = CONCAT('已批准 - 授予权限: ', %s)
+                admin_remark = CONCAT('已批准 - 授予权限: ', %s),
+                approver_id = %s,
+                approver_name = %s,
+                approved_at = CURRENT_TIMESTAMP
             WHERE request_id = %s
-        """, (granted_permission, request_id))
+        """, (granted_permission, session['user_id'], session['realname'], request_id))
 
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"批准注册申请成功 - 申请ID: {request_id}, 用户ID: {user_request['user_id']}, 授予权限: {granted_permission}")
+        logger.info(f"批准注册申请成功 - 申请ID: {request_id}, 用户ID: {user_request['user_id']}, 授予权限: {granted_permission}, 审批人: {session['user_id']}")
         flash(f'已批准用户申请！用户ID: {user_request["user_id"]}，授予权限: {granted_permission}', 'success')
 
     except Exception as e:
@@ -726,17 +729,21 @@ def reject_user_request(request_id):
             cur.close()
             return redirect(url_for('user_requests'))
 
-        # 更新申请状态
+        # 更新申请状态和审批人信息
         cur.execute("""
             UPDATE user_requests 
-            SET status = '已拒绝', admin_remark = %s 
+            SET status = '已拒绝', 
+                admin_remark = %s,
+                approver_id = %s,
+                approver_name = %s,
+                approved_at = CURRENT_TIMESTAMP
             WHERE request_id = %s
-        """, (admin_remark, request_id))
+        """, (admin_remark, session['user_id'], session['realname'], request_id))
 
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"拒绝注册申请 - 申请ID: {request_id}, 备注: {admin_remark}")
+        logger.info(f"拒绝注册申请 - 申请ID: {request_id}, 备注: {admin_remark}, 审批人: {session['user_id']}")
         flash('已拒绝用户申请', 'success')
 
     except Exception as e:
