@@ -67,37 +67,56 @@ CREATE TABLE payments (
     INDEX idx_type (payment_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='交费记录表';
 
--- 5. 用户表（修改：移除username的唯一约束）
+-- 5. 用户表（修改：使用用户ID作为唯一标识，添加职务字段）
 CREATE TABLE users (
-    user_id VARCHAR(20) PRIMARY KEY COMMENT '用户ID',
-    username VARCHAR(50) NOT NULL COMMENT '用户名',  -- 移除了UNIQUE约束
+    user_id VARCHAR(20) PRIMARY KEY COMMENT '用户ID(学校身份编号)',
     password VARCHAR(255) NOT NULL COMMENT '密码(加密)',
     realname VARCHAR(50) NOT NULL COMMENT '真实姓名',
     permission ENUM('管理员', '教师') NOT NULL DEFAULT '教师' COMMENT '权限',
+    job_title ENUM('教师', '工作人员') NOT NULL COMMENT '职务',
     email VARCHAR(100) COMMENT '邮箱',
     phone VARCHAR(20) COMMENT '手机号',
+    remark VARCHAR(200) COMMENT '备注',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_username (username)  -- 普通索引，非唯一
+    INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
 
--- 6. 用户注册申请表（修改：移除username的唯一约束，允许同一用户多次申请）
+-- 6. 用户注册申请表（修改：使用用户ID作为标识，添加职务和备注字段）
 CREATE TABLE user_requests (
     request_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '申请ID',
-    username VARCHAR(50) NOT NULL COMMENT '用户名',  -- 移除了UNIQUE约束
+    user_id VARCHAR(20) NOT NULL COMMENT '用户ID(学校身份编号)',
     password VARCHAR(255) NOT NULL COMMENT '密码(加密)',
     realname VARCHAR(50) NOT NULL COMMENT '真实姓名',
     permission ENUM('管理员', '教师') NOT NULL DEFAULT '教师' COMMENT '申请的权限',
+    job_title ENUM('教师', '工作人员') NOT NULL COMMENT '申请的职务',
     email VARCHAR(100) COMMENT '邮箱',
     phone VARCHAR(20) COMMENT '手机号',
+    remark VARCHAR(200) COMMENT '申请备注',
     status ENUM('待审批', '已批准', '已拒绝') DEFAULT '待审批' COMMENT '申请状态',
-    remark VARCHAR(200) COMMENT '备注/拒绝原因',
+    admin_remark VARCHAR(200) COMMENT '管理员备注/拒绝原因',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_username_status (username, status),  -- 添加复合索引，提高查询效率
+    INDEX idx_user_id (user_id),
     INDEX idx_status (status),
     INDEX idx_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户注册申请表';
+
+-- 7. 通知公告表
+CREATE TABLE announcements (
+    announcement_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '通知ID',
+    title VARCHAR(100) NOT NULL COMMENT '通知标题',
+    content TEXT NOT NULL COMMENT '通知内容',
+    publisher_id VARCHAR(20) NOT NULL COMMENT '发布人ID',
+    publisher_name VARCHAR(50) NOT NULL COMMENT '发布人姓名',
+    permission ENUM('管理员', '教师', '全部') NOT NULL DEFAULT '全部' COMMENT '阅读权限',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '发布时间',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    FOREIGN KEY (publisher_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    INDEX idx_publisher (publisher_id),
+    INDEX idx_permission (permission),
+    INDEX idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知公告表';
 
 -- ================================
 -- 插入示例数据
@@ -150,20 +169,30 @@ INSERT INTO payments (building_id, room_id, payment_date, payment_type, amount, 
 ('D栋', 'D101', '2024-09-10', '住宿费', 1000.00, '2024009', '2024-2025学年第一学期');
 
 -- 插入用户数据 (密码统一为: admin123, 使用SHA256加密)
--- 注意：user_id现在使用自动生成的格式，允许重复的username
-INSERT INTO users (user_id, username, password, realname, permission, email, phone) VALUES
-('U25010001', 'admin', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '系统管理员', '管理员', 'admin@example.com', '13800000001'),
-('U25010002', 'teacher', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '张老师', '教师', 'zhang@example.com', '13800000002'),
-('U25010003', 'teacher', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '李老师', '教师', 'li@example.com', '13800000003'),
-('U25010004', 'teacher', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '王老师', '教师', 'wang@example.com', '13800000004');
+-- 注意：user_id现在使用学校身份编号格式（10位数字）
+INSERT INTO users (user_id, password, realname, permission, job_title, email, phone) VALUES
+('2023010001', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '系统管理员', '管理员', '工作人员', 'admin@example.com', '13800000001'),
+('2023010002', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '张老师', '教师', '教师', 'zhang@example.com', '13800000002'),
+('2023010003', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '李老师', '教师', '教师', 'li@example.com', '13800000003'),
+('2023010004', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '王老师', '教师', '教师', 'wang@example.com', '13800000004');
 
--- 插入示例注册申请数据（现在允许重复的用户名）
-INSERT INTO user_requests (username, password, realname, permission, email, phone, status, remark) VALUES
-('newteacher1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '赵老师', '教师', 'zhao@example.com', '13800000005', '待审批', NULL),
-('newteacher1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '赵老师（修改后）', '教师', 'zhao_updated@example.com', '13800000015', '已批准', '已批准 - 用户ID: U25010005，授予权限: 教师'),
-('newadmin1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '刘管理员', '管理员', 'liu@example.com', '13800000006', '已拒绝', '管理员权限申请需要更多理由'),
-('newadmin1', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '刘管理员（修改后）', '管理员', 'liu_updated@example.com', '13800000016', '待审批', NULL),
-('teacher', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '孙老师', '教师', 'sun@example.com', '13800000007', '待审批', NULL);
+-- 插入示例注册申请数据
+INSERT INTO user_requests (user_id, password, realname, permission, job_title, email, phone, remark, status, admin_remark) VALUES
+('2023010005', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '赵老师', '教师', '教师', 'zhao@example.com', '13800000005', '申请教师权限，教授计算机课程', '待审批', NULL),
+('2023010006', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '刘老师', '教师', '教师', 'liu@example.com', '13800000006', '申请教师权限，负责学生管理工作', '已批准', '已批准 - 授予权限: 教师'),
+('2023010007', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '孙老师', '教师', '教师', 'sun@example.com', '13800000007', '申请教师权限，新入职教师', '待审批', NULL),
+('2023010008', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '陈管理员', '管理员', '工作人员', 'chen@example.com', '13800000008', '申请管理员权限，负责系统维护', '已拒绝', '管理员权限申请需要更多理由'),
+('2023010009', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '吴工作人员', '教师', '工作人员', 'wu@example.com', '13800000009', '申请工作人员权限，负责公寓日常管理', '待审批', NULL);
+
+-- 插入示例通知数据（注意：publisher_id需要与users表中的user_id对应）
+INSERT INTO announcements (title, content, publisher_id, publisher_name, permission, created_at) VALUES
+('新学期住宿费缴纳通知', '各位同学请注意：新学期住宿费缴纳已经开始，请于9月10日前完成缴费，逾期将产生滞纳金。', '2023010001', '系统管理员', '全部', '2024-09-01 09:00:00'),
+('公寓楼消防安全检查', '根据学校安排，将于9月15日对各公寓楼进行消防安全检查，请各寝室提前做好准备。', '2023010001', '系统管理员', '全部', '2024-09-02 10:30:00'),
+('教师会议通知', '本周五下午2点在行政楼会议室召开教师工作会议，请各位教师准时参加。', '2023010001', '系统管理员', '教师', '2024-09-03 14:00:00'),
+('管理员系统培训', '定于9月10日下午3点进行系统管理员操作培训，请各位管理员准时参加。', '2023010001', '系统管理员', '管理员', '2024-09-03 16:00:00'),
+('节假日宿舍安全提醒', '中秋、国庆假期将至，请各位同学离校前关闭水电、锁好门窗，注意宿舍安全。', '2023010002', '张老师', '全部', '2024-09-04 11:00:00'),
+('寝室卫生评比通知', '本月寝室卫生评比将于9月20日开始，请各寝室做好清洁工作。', '2023010003', '李老师', '全部', '2024-09-05 09:30:00'),
+('关于系统升级的通知', '本系统将于本周六凌晨0:00-2:00进行维护升级，期间系统将暂停服务，请提前做好安排。', '2023010001', '系统管理员', '全部', '2024-09-06 15:00:00');
 
 -- 创建视图：学生交费统计
 CREATE VIEW student_payment_summary AS
@@ -203,6 +232,7 @@ DESC students;
 DESC payments;
 DESC users;
 DESC user_requests;
+DESC announcements;
 
 -- 显示示例数据数量
 SELECT '公寓楼数量: ' as label, COUNT(*) as count FROM buildings
@@ -215,50 +245,30 @@ SELECT '交费记录数量: ', COUNT(*) FROM payments
 UNION ALL
 SELECT '用户数量: ', COUNT(*) FROM users
 UNION ALL
-SELECT '注册申请数量: ', COUNT(*) FROM user_requests;
+SELECT '注册申请数量: ', COUNT(*) FROM user_requests
+UNION ALL
+SELECT '通知公告数量: ', COUNT(*) FROM announcements;
 
--- 显示重复用户名示例
-SELECT '重复用户名示例: ' as note;
-SELECT username, COUNT(*) as count, GROUP_CONCAT(DISTINCT realname) as realnames
+-- 显示用户职务统计
+SELECT '用户职务统计: ' as note;
+SELECT job_title, COUNT(*) as count
 FROM users 
-GROUP BY username 
-HAVING COUNT(*) > 1;
+GROUP BY job_title;
 
 -- 显示注册申请状态统计
 SELECT 
     status,
     COUNT(*) as count,
-    GROUP_CONCAT(DISTINCT username ORDER BY username) as usernames
+    GROUP_CONCAT(DISTINCT user_id ORDER BY user_id) as user_ids
 FROM user_requests 
 GROUP BY status;
 
--- 7. 通知公告表
-CREATE TABLE announcements (
-    announcement_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '通知ID',
-    title VARCHAR(100) NOT NULL COMMENT '通知标题',
-    content TEXT NOT NULL COMMENT '通知内容',
-    publisher_id VARCHAR(20) NOT NULL COMMENT '发布人ID',
-    publisher_name VARCHAR(50) NOT NULL COMMENT '发布人姓名',
-    permission ENUM('管理员', '教师', '全部') NOT NULL DEFAULT '全部' COMMENT '阅读权限',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '发布时间',
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    FOREIGN KEY (publisher_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    INDEX idx_publisher (publisher_id),
-    INDEX idx_permission (permission),
-    INDEX idx_created (created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知公告表';
-
--- 插入示例通知数据
-INSERT INTO announcements (title, content, publisher_id, publisher_name, permission, created_at) VALUES
-('新学期住宿费缴纳通知', '各位同学请注意：新学期住宿费缴纳已经开始，请于9月10日前完成缴费，逾期将产生滞纳金。', 'U25010001', '系统管理员', '全部', '2024-09-01 09:00:00'),
-('公寓楼消防安全检查', '根据学校安排，将于9月15日对各公寓楼进行消防安全检查，请各寝室提前做好准备。', 'U25010001', '系统管理员', '全部', '2024-09-02 10:30:00'),
-('教师会议通知', '本周五下午2点在行政楼会议室召开教师工作会议，请各位教师准时参加。', 'U25010001', '系统管理员', '教师', '2024-09-03 14:00:00'),
-('管理员系统培训', '定于9月10日下午3点进行系统管理员操作培训，请各位管理员准时参加。', 'U25010001', '系统管理员', '管理员', '2024-09-03 16:00:00'),
-('节假日宿舍安全提醒', '中秋、国庆假期将至，请各位同学离校前关闭水电、锁好门窗，注意宿舍安全。', 'U25010002', '张老师', '全部', '2024-09-04 11:00:00'),
-('寝室卫生评比通知', '本月寝室卫生评比将于9月20日开始，请各寝室做好清洁工作。', 'U25010003', '李老师', '全部', '2024-09-05 09:30:00');
-
--- 更新原有数据库创建成功的提示
-SELECT '数据库创建成功！' as message;
+-- 显示公告权限统计
+SELECT 
+    permission,
+    COUNT(*) as count
+FROM announcements 
+GROUP BY permission;
 
 -- 数据库创建完成
 SELECT '数据库创建成功！' as message;
