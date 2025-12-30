@@ -457,6 +457,7 @@ def my_info():
 
     return render_template('my_info.html', user=user)
 
+
 @app.route('/my_info/update', methods=['POST'])
 @login_required
 @log_operation("更新个人信息")
@@ -467,6 +468,8 @@ def update_my_info():
         current_password = request.form.get('current_password')
         new_password = request.form.get('new_password')
         password_confirm = request.form.get('password_confirm')
+        email = request.form.get('email', '')
+        phone = request.form.get('phone', '')
 
         cur = mysql.connection.cursor()
 
@@ -501,21 +504,28 @@ def update_my_info():
             # 加密新密码
             hashed_password = hash_password(new_password)
 
-            # 更新密码
+            # 更新密码和联系信息
             cur.execute("""
                 UPDATE users 
-                SET password = %s, updated_at = CURRENT_TIMESTAMP
+                SET password = %s, email = %s, phone = %s, updated_at = CURRENT_TIMESTAMP
                 WHERE user_id = %s
-            """, (hashed_password, session['user_id']))
+            """, (hashed_password, email, phone, session['user_id']))
+        else:
+            # 只更新联系信息
+            cur.execute("""
+                UPDATE users 
+                SET email = %s, phone = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = %s
+            """, (email, phone, session['user_id']))
 
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"密码更新成功 - 用户ID: {session['user_id']}")
+        logger.info(f"个人信息更新成功 - 用户ID: {session['user_id']}")
         flash('个人信息更新成功', 'success')
 
     except Exception as e:
-        logger.error(f"密码更新失败 - 用户ID: {session['user_id']}, 错误: {str(e)}")
+        logger.error(f"个人信息更新失败 - 用户ID: {session['user_id']}, 错误: {str(e)}")
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('my_info'))
@@ -868,30 +878,79 @@ def add_building():
 
     return redirect(url_for('buildings'))
 
+
 @app.route('/buildings/edit/<building_id>', methods=['POST'])
 @login_required
 @log_operation("编辑公寓楼")
 def edit_building(building_id):
     """编辑公寓楼"""
     try:
+        new_building_id = request.form.get('building_id')  # 新楼号
         floors = request.form.get('floors', type=int)
         rooms_count = request.form.get('rooms_count', type=int)
         commission_date = request.form.get('commission_date')
 
-        logger.info(f"编辑公寓楼 - 楼号: {building_id}, 新楼层: {floors}, 新房间数: {rooms_count}")
+        logger.info(
+            f"编辑公寓楼 - 原楼号: {building_id}, 新楼号: {new_building_id}, 新楼层: {floors}, 新房间数: {rooms_count}")
 
         cur = mysql.connection.cursor()
-        cur.execute("""
-            UPDATE buildings 
-            SET floors=%s, rooms_count=%s, commission_date=%s
-            WHERE building_id=%s
-        """, (floors, rooms_count, commission_date, building_id))
 
-        mysql.connection.commit()
-        cur.close()
+        # 如果楼号改变了，检查新楼号是否已存在
+        if new_building_id != building_id:
+            cur.execute("SELECT building_id FROM buildings WHERE building_id = %s", (new_building_id,))
+            if cur.fetchone():
+                flash('新楼号已存在', 'danger')
+                cur.close()
+                return redirect(url_for('buildings'))
 
-        logger.info(f"编辑公寓楼成功 - 楼号: {building_id}")
-        flash('公寓楼信息更新成功', 'success')
+        # 使用事务更新所有相关表
+        try:
+            # 开始事务
+            cur.execute("START TRANSACTION")
+
+            # 更新公寓楼表
+            cur.execute("""
+                UPDATE buildings 
+                SET building_id=%s, floors=%s, rooms_count=%s, commission_date=%s
+                WHERE building_id=%s
+            """, (new_building_id, floors, rooms_count, commission_date, building_id))
+
+            # 更新寝室表
+            cur.execute("""
+                UPDATE rooms 
+                SET building_id=%s
+                WHERE building_id=%s
+            """, (new_building_id, building_id))
+
+            # 更新学生表
+            cur.execute("""
+                UPDATE students 
+                SET building_id=%s
+                WHERE building_id=%s
+            """, (new_building_id, building_id))
+
+            # 更新交费记录表
+            cur.execute("""
+                UPDATE payments 
+                SET building_id=%s
+                WHERE building_id=%s
+            """, (new_building_id, building_id))
+
+            # 提交事务
+            mysql.connection.commit()
+
+            logger.info(f"编辑公寓楼成功 - 原楼号: {building_id}, 新楼号: {new_building_id}")
+            flash('公寓楼信息更新成功', 'success')
+
+        except Exception as e:
+            # 回滚事务
+            mysql.connection.rollback()
+            logger.error(f"编辑公寓楼事务失败 - 楼号: {building_id}, 错误: {str(e)}")
+            flash(f'更新失败: {str(e)}', 'danger')
+
+        finally:
+            cur.close()
+
     except Exception as e:
         logger.error(f"编辑公寓楼失败 - 楼号: {building_id}, 错误: {str(e)}")
         flash(f'更新失败: {str(e)}', 'danger')
@@ -1717,6 +1776,8 @@ def add_user():
         realname = request.form.get('realname')
         job_title = request.form.get('job_title')
         permission = request.form.get('permission')
+        email = request.form.get('email', '')
+        phone = request.form.get('phone', '')
 
         logger.info(f"添加用户 - 用户ID: {user_id}, 真实姓名: {realname}, 职务: {job_title}, 权限: {permission}")
 
@@ -1741,9 +1802,9 @@ def add_user():
             return redirect(url_for('users'))
 
         cur.execute("""
-            INSERT INTO users (user_id, password, realname, permission, job_title)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (user_id, hashed_password, realname, permission, job_title))
+            INSERT INTO users (user_id, password, realname, permission, job_title, email, phone)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (user_id, hashed_password, realname, permission, job_title, email, phone))
 
         mysql.connection.commit()
         cur.close()
@@ -1765,6 +1826,8 @@ def edit_user(user_id):
         realname = request.form.get('realname')
         job_title = request.form.get('job_title')
         permission = request.form.get('permission')
+        email = request.form.get('email', '')
+        phone = request.form.get('phone', '')
         password = request.form.get('password')
 
         logger.info(f"编辑用户 - 用户ID: {user_id}, 新真实姓名: {realname}, 新职务: {job_title}, 新权限: {permission}")
@@ -1775,15 +1838,15 @@ def edit_user(user_id):
             hashed_password = hash_password(password)
             cur.execute("""
                 UPDATE users 
-                SET realname=%s, job_title=%s, permission=%s, password=%s
+                SET realname=%s, job_title=%s, permission=%s, email=%s, phone=%s, password=%s, updated_at=CURRENT_TIMESTAMP
                 WHERE user_id=%s
-            """, (realname, job_title, permission, hashed_password, user_id))
+            """, (realname, job_title, permission, email, phone, hashed_password, user_id))
         else:
             cur.execute("""
                 UPDATE users 
-                SET realname=%s, job_title=%s, permission=%s
+                SET realname=%s, job_title=%s, permission=%s, email=%s, phone=%s, updated_at=CURRENT_TIMESTAMP
                 WHERE user_id=%s
-            """, (realname, job_title, permission, user_id))
+            """, (realname, job_title, permission, email, phone, user_id))
 
         mysql.connection.commit()
         cur.close()
@@ -2243,198 +2306,6 @@ def api_download_logs():
             'message': str(e)
         }), 500
 
-# ==================== 系统状态监控 ====================
-@app.route('/system/status')
-@admin_required
-def system_status():
-    """系统状态监控页面"""
-    logger.info(f"访问系统状态页面 - 管理员: {session['user_id']}")
-    return render_template('system_status.html')
-
-@app.route('/api/system/status')
-@admin_required
-def api_system_status():
-    """获取系统状态API"""
-    try:
-        # 获取系统信息
-        cpu_percent = psutil.cpu_percent(interval=1)
-        memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
-
-        # 获取进程运行时间
-        process = psutil.Process()
-        uptime = int(time.time() - process.create_time())
-
-        # 获取数据库状态
-        db_status = "正常"
-        try:
-            cur = mysql.connection.cursor()
-            cur.execute("SELECT 1")
-            cur.close()
-        except Exception as e:
-            db_status = f"异常: {str(e)}"
-
-        # 获取日志文件大小
-        log_size = "0 MB"
-        log_file = 'logs/dorm_management.log'
-        if os.path.exists(log_file):
-            size_bytes = os.path.getsize(log_file)
-            size_mb = size_bytes / (1024 * 1024)
-            log_size = f"{size_mb:.2f} MB"
-
-        # 获取在线用户数
-        online_users = 1  # 当前用户
-
-        # 构建系统警告
-        warnings = []
-
-        if cpu_percent > 80:
-            warnings.append({
-                'level': 'WARNING',
-                'title': 'CPU使用率过高',
-                'message': f'CPU使用率达到 {cpu_percent}%，请检查系统负载',
-                'time': datetime.now().strftime('%H:%M:%S')
-            })
-
-        if memory.percent > 80:
-            warnings.append({
-                'level': 'WARNING',
-                'title': '内存使用率过高',
-                'message': f'内存使用率达到 {memory.percent}%，可用内存: {memory.available/(1024*1024*1024):.2f} GB',
-                'time': datetime.now().strftime('%H:%M:%S')
-            })
-
-        if disk.percent > 85:
-            warnings.append({
-                'level': 'WARNING',
-                'title': '磁盘空间不足',
-                'message': f'磁盘使用率达到 {disk.percent}%，可用空间: {disk.free/(1024*1024*1024):.2f} GB',
-                'time': datetime.now().strftime('%H:%M:%S')
-            })
-
-        # 模拟最近活动
-        recent_activities = [
-            {
-                'user': session.get('realname', '管理员'),
-                'action': '查看系统状态',
-                'type': '访问',
-                'time': datetime.now().strftime('%H:%M:%S')
-            }
-        ]
-
-        # 模拟数据库性能
-        database_performance = {
-            'query_count': 156,
-            'avg_response_time': 12.5,
-            'error_count': 3
-        }
-
-        # 模拟性能数据
-        performance_data = {
-            'labels': ['10:00', '10:15', '10:30', '10:45', '11:00', '11:15'],
-            'cpu': [cpu_percent, cpu_percent * 0.9, cpu_percent * 0.8, cpu_percent * 1.1, cpu_percent, cpu_percent * 0.7],
-            'memory': [memory.percent, memory.percent * 0.95, memory.percent * 0.9, memory.percent * 1.05, memory.percent, memory.percent * 0.85]
-        }
-
-        return jsonify({
-            'success': True,
-            'uptime': uptime,
-            'database_status': db_status,
-            'log_size': log_size,
-            'online_users': online_users,
-            'server_status': {
-                'cpuUsage': cpu_percent,
-                'memoryUsage': memory.percent,
-                'memoryTotal': memory.total,
-                'memoryAvailable': memory.available,
-                'diskUsage': disk.percent,
-                'diskFree': disk.free,
-                'system': platform.system(),
-                'pythonVersion': platform.python_version()
-            },
-            'warnings': warnings,
-            'recent_activities': recent_activities,
-            'database_performance': database_performance,
-            'performance_data': performance_data
-        })
-
-    except Exception as e:
-        logger.error(f"获取系统状态失败: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
-
-@app.route('/api/system/status/report')
-@admin_required
-@log_operation("下载系统状态报告")
-def api_system_status_report():
-    """下载系统状态报告"""
-    try:
-        # 收集系统信息
-        status_data = api_system_status().get_json()
-
-        # 创建报告内容
-        report_lines = []
-        report_lines.append("=" * 60)
-        report_lines.append("学生公寓管理系统 - 系统状态报告")
-        report_lines.append(f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        report_lines.append("=" * 60)
-
-        if status_data['success']:
-            report_lines.append(f"\n系统运行时间: {format_uptime(status_data['uptime'])}")
-            report_lines.append(f"数据库状态: {status_data['database_status']}")
-            report_lines.append(f"日志文件大小: {status_data['log_size']}")
-            report_lines.append(f"在线用户数: {status_data['online_users']}")
-
-            report_lines.append("\n服务器状态:")
-            for key, value in status_data['server_status'].items():
-                report_lines.append(f"  {key}: {value}")
-
-            if status_data['warnings']:
-                report_lines.append("\n系统警告:")
-                for warning in status_data['warnings']:
-                    report_lines.append(f"  [{warning['level']}] {warning['title']}: {warning['message']}")
-
-            report_lines.append("\n数据库性能:")
-            report_lines.append(f"  查询次数: {status_data['database_performance']['query_count']}")
-            report_lines.append(f"  平均响应时间: {status_data['database_performance']['avg_response_time']} ms")
-            report_lines.append(f"  错误查询数: {status_data['database_performance']['error_count']}")
-
-        report_content = "\n".join(report_lines)
-
-        # 创建内存文件并返回
-        report_file = io.BytesIO(report_content.encode('utf-8'))
-
-        logger.info(f"下载系统状态报告 - 操作者: {session['user_id']}")
-
-        return send_file(
-            report_file,
-            as_attachment=True,
-            download_name=f'system_status_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt',
-            mimetype='text/plain'
-        )
-
-    except Exception as e:
-        logger.error(f"生成系统状态报告失败: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        }), 500
-
-def format_uptime(seconds):
-    """格式化运行时间"""
-    days = seconds // 86400
-    hours = (seconds % 86400) // 3600
-    minutes = (seconds % 3600) // 60
-
-    if days > 0:
-        return f"{days}天{hours}小时"
-    elif hours > 0:
-        return f"{hours}小时{minutes}分钟"
-    else:
-        return f"{minutes}分钟"
-
 # ==================== 数据库备份功能 ====================
 @app.route('/backup')
 @admin_required
@@ -2467,7 +2338,6 @@ def api_create_backup():
             logger.error(f"数据库备份创建失败 - 错误: {result.get('error', '未知错误')}, 操作者: {session['user_id']}")
 
         return jsonify(result)
-
     except Exception as e:
         logger.error(f"创建备份API失败: {str(e)}")
         return jsonify({
@@ -2488,7 +2358,6 @@ def api_list_backups():
             'backups': backups,
             'count': len(backups)
         })
-
     except Exception as e:
         logger.error(f"列出备份文件失败: {str(e)}")
         return jsonify({
@@ -2511,7 +2380,6 @@ def api_delete_backup(filename):
             logger.warning(f"删除备份文件失败 - 文件: {filename}, 错误: {result.get('message', '未知错误')}")
 
         return jsonify(result)
-
     except Exception as e:
         logger.error(f"删除备份文件API失败: {str(e)}")
         return jsonify({
@@ -2537,7 +2405,6 @@ def api_get_backup_info(filename):
                 'success': False,
                 'message': '备份文件不存在'
             }), 404
-
     except Exception as e:
         logger.error(f"获取备份文件信息失败: {str(e)}")
         return jsonify({
@@ -2557,7 +2424,6 @@ def api_get_disk_usage():
             'success': True,
             'usage': usage
         })
-
     except Exception as e:
         logger.error(f"获取磁盘使用情况失败: {str(e)}")
         return jsonify({
@@ -2586,7 +2452,6 @@ def api_download_backup(filename):
             download_name=filename,
             mimetype='application/zip'
         )
-
     except Exception as e:
         logger.error(f"下载备份文件失败: {str(e)}")
         flash(f'下载备份文件失败: {str(e)}', 'danger')
@@ -2616,7 +2481,6 @@ def api_restore_backup(filename):
             logger.error(f"数据库恢复失败 - 文件: {filename}, 错误: {result.get('message', '未知错误')}")
 
         return jsonify(result)
-
     except Exception as e:
         logger.error(f"恢复备份API失败: {str(e)}")
         return jsonify({
@@ -2654,7 +2518,6 @@ def api_auto_backup_status():
             'status': status,
             'stats': stats
         })
-
     except Exception as e:
         logger.error(f"获取自动备份状态失败: {str(e)}")
         return jsonify({
@@ -2681,7 +2544,6 @@ def api_start_auto_backup():
                 'success': False,
                 'message': '启动自动备份失败'
             })
-
     except Exception as e:
         logger.error(f"启动自动备份失败: {str(e)}")
         return jsonify({
@@ -2708,7 +2570,6 @@ def api_stop_auto_backup():
                 'success': False,
                 'message': '停止自动备份失败'
             })
-
     except Exception as e:
         logger.error(f"停止自动备份失败: {str(e)}")
         return jsonify({
@@ -2735,7 +2596,6 @@ def api_restart_auto_backup():
                 'success': False,
                 'message': '重启自动备份失败'
             })
-
     except Exception as e:
         logger.error(f"重启自动备份失败: {str(e)}")
         return jsonify({
@@ -2755,7 +2615,6 @@ def api_backup_now():
             logger.info(f"手动执行立即备份 - 操作者: {session['user_id']}")
 
         return jsonify(result)
-
     except Exception as e:
         logger.error(f"立即备份执行失败: {str(e)}")
         return jsonify({
@@ -2822,7 +2681,6 @@ def api_auto_backup_settings():
                     'success': False,
                     'message': '更新设置失败'
                 })
-
         except Exception as e:
             logger.error(f"更新自动备份设置失败: {str(e)}")
             return jsonify({
@@ -2845,7 +2703,6 @@ def api_auto_backup_history():
             'history': history,
             'count': len(history)
         })
-
     except Exception as e:
         logger.error(f"获取备份历史失败: {str(e)}")
         return jsonify({
@@ -2867,7 +2724,7 @@ if __name__ == '__main__':
     # 创建必要的模板文件
     try:
         # 检查是否缺少必要的模板文件
-        required_templates = ['logs.html', 'system_status.html', 'auto_backup.html', 'backup.html']
+        required_templates = ['logs.html', 'auto_backup.html', 'backup.html']
         for template in required_templates:
             template_path = os.path.join('templates', template)
             if not os.path.exists(template_path):

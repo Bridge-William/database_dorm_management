@@ -96,14 +96,15 @@
             <table class="table table-hover align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th width="15%">用户ID</th>
-                        <th width="15%">真实姓名</th>
-                        <th width="12%">职务</th>
-                        <th width="12%">权限</th>
+                        <th width="12%">用户ID</th>
+                        <th width="10%">真实姓名</th>
+                        <th width="8%">职务</th>
+                        <th width="8%">权限</th>
                         <th width="12%">邮箱</th>
-                        <th width="12%">手机号</th>
+                        <th width="10%">手机号</th>
                         <th width="12%">创建时间</th>
-                        <th width="10%">操作</th>
+                        <th width="12%">更新时间</th>
+                        <th width="16%">操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -120,7 +121,7 @@
                             <strong>{{ user.realname }}</strong>
                         </td>
                         <td>
-                            <span class="badge bg-secondary px-3 py-2">
+                            <span class="badge bg-secondary">
                                 {% if user.job_title == '教师' %}
                                 <i class="bi bi-person-video3"></i>
                                 {% else %}
@@ -130,7 +131,7 @@
                             </span>
                         </td>
                         <td>
-                            <span class="badge bg-{% if user.permission == '管理员' %}danger{% else %}info{% endif %} px-3 py-2">
+                            <span class="badge bg-{% if user.permission == '管理员' %}danger{% else %}info{% endif %}">
                                 {% if user.permission == '管理员' %}
                                 <i class="bi bi-shield-check"></i>
                                 {% else %}
@@ -148,7 +149,18 @@
                         <td>
                             <small class="text-muted">
                                 {% if user.created_at %}
-                                {{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                {{ user.created_at.strftime('%Y-%m-%d') }}<br>
+                                <small>{{ user.created_at.strftime('%H:%M:%S') }}</small>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </small>
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                {% if user.updated_at %}
+                                {{ user.updated_at.strftime('%Y-%m-%d') }}<br>
+                                <small>{{ user.updated_at.strftime('%H:%M:%S') }}</small>
                                 {% else %}
                                 -
                                 {% endif %}
@@ -157,7 +169,7 @@
                         <td>
                             <div class="btn-group btn-group-sm" role="group">
                                 <button class="btn btn-outline-primary"
-                                        onclick="editUser('{{ user.user_id }}', '{{ user.realname }}', '{{ user.job_title }}', '{{ user.permission }}')"
+                                        onclick="editUser('{{ user.user_id }}', '{{ user.realname }}', '{{ user.job_title }}', '{{ user.permission }}', '{{ user.email or "" }}', '{{ user.phone or "" }}')"
                                         title="编辑">
                                     <i class="bi bi-pencil"></i>
                                 </button>
@@ -257,6 +269,17 @@
                                required minlength="6" placeholder="再次输入密码">
                     </div>
                     <div class="mb-3">
+                        <label for="addEmail" class="form-label">邮箱</label>
+                        <input type="email" class="form-control" id="addEmail" name="email"
+                               placeholder="请输入邮箱地址">
+                    </div>
+                    <div class="mb-3">
+                        <label for="addPhone" class="form-label">手机号</label>
+                        <input type="tel" class="form-control" id="addPhone" name="phone"
+                               pattern="1[3-9][0-9]{9}" placeholder="请输入11位手机号">
+                        <div class="form-text">格式：1开头，11位数字</div>
+                    </div>
+                    <div class="mb-3">
                         <label for="addJobTitle" class="form-label">
                             职务 <span class="text-danger">*</span>
                         </label>
@@ -317,6 +340,15 @@
                                required maxlength="50">
                     </div>
                     <div class="mb-3">
+                        <label for="editEmail" class="form-label">邮箱</label>
+                        <input type="email" class="form-control" id="editEmail" name="email">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editPhone" class="form-label">手机号</label>
+                        <input type="tel" class="form-control" id="editPhone" name="phone"
+                               pattern="1[3-9][0-9]{9}">
+                    </div>
+                    <div class="mb-3">
                         <label for="editJobTitle" class="form-label">
                             职务 <span class="text-danger">*</span>
                         </label>
@@ -368,6 +400,8 @@ function validateAddUserForm(form) {
     const user_id = form.querySelector('[name="user_id"]').value;
     const password = form.querySelector('#addPassword').value;
     const confirm = form.querySelector('#addPasswordConfirm').value;
+    const email = form.querySelector('#addEmail').value;
+    const phone = form.querySelector('#addPhone').value;
 
     // 验证用户ID格式
     if (!/^\d{10}$/.test(user_id)) {
@@ -387,6 +421,18 @@ function validateAddUserForm(form) {
         return false;
     }
 
+    // 验证邮箱格式（如果填写了邮箱）
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        alert('请输入有效的邮箱地址');
+        return false;
+    }
+
+    // 验证手机号格式（如果填写了手机号）
+    if (phone && !/^1[3-9][0-9]{9}$/.test(phone)) {
+        alert('请输入正确的手机号码（11位）');
+        return false;
+    }
+
     // 密码强度提示
     if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
         if (!confirm('密码强度较弱，建议使用8位以上包含字母和数字的组合。是否继续？')) {
@@ -401,6 +447,8 @@ function validateAddUserForm(form) {
 function validateEditUserForm(form) {
     const password = form.querySelector('#editPassword').value;
     const confirm = form.querySelector('#editPasswordConfirm').value;
+    const email = form.querySelector('#editEmail').value;
+    const phone = form.querySelector('#editPhone').value;
 
     // 如果填写了新密码
     if (password || confirm) {
@@ -424,15 +472,29 @@ function validateEditUserForm(form) {
         }
     }
 
+    // 验证邮箱格式（如果填写了邮箱）
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        alert('请输入有效的邮箱地址');
+        return false;
+    }
+
+    // 验证手机号格式（如果填写了手机号）
+    if (phone && !/^1[3-9][0-9]{9}$/.test(phone)) {
+        alert('请输入正确的手机号码（11位）');
+        return false;
+    }
+
     return true;
 }
 
 // 编辑用户
-function editUser(id, realname, job_title, permission) {
+function editUser(id, realname, job_title, permission, email, phone) {
     document.getElementById('editUserId').value = id;
     document.getElementById('editRealname').value = realname;
     document.getElementById('editJobTitle').value = job_title;
     document.getElementById('editPermission').value = permission;
+    document.getElementById('editEmail').value = email || '';
+    document.getElementById('editPhone').value = phone || '';
     document.getElementById('editPassword').value = '';
     document.getElementById('editPasswordConfirm').value = '';
     document.getElementById('editUserForm').action = `/users/edit/${id}`;
