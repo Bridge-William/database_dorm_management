@@ -65,8 +65,8 @@ console_handler.setLevel(logging.INFO)
 
 # 设置日志格式
 formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='Y-%m-%d %H:%M:%S'
+    '%(asctime)s - %(name)s - %(levelname)s - [用户ID:%(user_id)s] - [操作:%(operation)s] - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
 )
 file_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
@@ -74,6 +74,19 @@ console_handler.setFormatter(formatter)
 # 添加处理器到日志器
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
+
+# 创建自定义过滤器
+class UserInfoFilter(logging.Filter):
+    """添加用户信息的日志过滤器"""
+    def filter(self, record):
+        if not hasattr(record, 'user_id'):
+            record.user_id = '未登录'
+        if not hasattr(record, 'operation'):
+            record.operation = '未知操作'
+        return True
+
+# 添加过滤器
+logger.addFilter(UserInfoFilter())
 
 # 日志装饰器
 def log_operation(operation_type):
@@ -85,19 +98,48 @@ def log_operation(operation_type):
                 user_id = session.get('user_id', '未登录')
                 username = session.get('username', '未登录')
                 realname = session.get('realname', '未登录')
+                permission = session.get('permission', '未登录')
 
-                logger.info(f"开始执行 {operation_type} - 用户ID: {user_id}, 姓名: {realname}, 函数: {f.__name__}")
+                # 创建日志记录器
+                func_logger = logging.getLogger(f.__name__)
+                func_logger.addFilter(UserInfoFilter())
+
+                # 记录开始执行
+                extra_info = {
+                    'user_id': user_id,
+                    'operation': operation_type
+                }
+                func_logger.info(
+                    f"开始执行 {operation_type} - 用户ID: {user_id}, 姓名: {realname}, 权限: {permission}, 函数: {f.__name__}",
+                    extra=extra_info
+                )
 
                 # 执行函数
                 result = f(*args, **kwargs)
 
-                logger.info(f"成功执行 {operation_type} - 用户ID: {user_id}, 姓名: {realname}")
+                # 记录成功执行
+                func_logger.info(
+                    f"成功执行 {operation_type} - 用户ID: {user_id}, 姓名: {realname}",
+                    extra=extra_info
+                )
                 return result
 
             except Exception as e:
                 user_id = session.get('user_id', '未登录')
-                logger.error(f"执行 {operation_type} 失败 - 用户ID: {user_id}, 错误: {str(e)}")
-                logger.error(traceback.format_exc())
+                extra_info = {
+                    'user_id': user_id,
+                    'operation': operation_type
+                }
+                func_logger = logging.getLogger(f.__name__)
+                func_logger.addFilter(UserInfoFilter())
+                func_logger.error(
+                    f"执行 {operation_type} 失败 - 用户ID: {user_id}, 错误: {str(e)}",
+                    extra=extra_info
+                )
+                func_logger.error(
+                    traceback.format_exc(),
+                    extra=extra_info
+                )
                 raise
 
         return decorated_function
@@ -109,9 +151,9 @@ for dir_name in required_dirs:
     dir_path = Path(dir_name)
     if not dir_path.exists():
         dir_path.mkdir(parents=True, exist_ok=True)
-        logger.info(f"创建目录: {dir_name}")
+        logger.info(f"创建目录: {dir_name}", extra={'user_id': '系统', 'operation': '系统初始化'})
     else:
-        logger.debug(f"目录已存在: {dir_name}")
+        logger.debug(f"目录已存在: {dir_name}", extra={'user_id': '系统', 'operation': '系统初始化'})
 
 # ==================== 自动备份调度器 ====================
 auto_backup_scheduler = AutoBackupScheduler(app.config, app)
@@ -122,13 +164,13 @@ def init_auto_backup():
         if app.config.get('AUTO_BACKUP_ENABLED', True):
             success = auto_backup_scheduler.start()
             if success:
-                logger.info("自动备份调度器初始化成功")
+                logger.info("自动备份调度器初始化成功", extra={'user_id': '系统', 'operation': '系统初始化'})
             else:
-                logger.warning("自动备份调度器初始化失败")
+                logger.warning("自动备份调度器初始化失败", extra={'user_id': '系统', 'operation': '系统初始化'})
         else:
-            logger.info("自动备份功能已禁用")
+            logger.info("自动备份功能已禁用", extra={'user_id': '系统', 'operation': '系统初始化'})
     except Exception as e:
-        logger.error(f"初始化自动备份失败: {str(e)}")
+        logger.error(f"初始化自动备份失败: {str(e)}", extra={'user_id': '系统', 'operation': '系统初始化'})
 
 # 应用启动时间
 app_start_time = datetime.now()
@@ -195,7 +237,8 @@ def inject_pending_requests_count():
             cur.close()
             return dict(pending_requests_count=pending_count)
         except Exception as e:
-            logger.error(f"获取待审批申请数量失败: {str(e)}")
+            logger.error(f"获取待审批申请数量失败: {str(e)}",
+                        extra={'user_id': session.get('user_id', '未登录'), 'operation': '查询待审批申请'})
             return dict(pending_requests_count=0)
     return dict(pending_requests_count=0)
 
@@ -214,7 +257,8 @@ def login():
         user_id = request.form.get('user_id')
         password = request.form.get('password')
 
-        logger.info(f"登录尝试 - 用户ID: {user_id}")
+        logger.info(f"登录尝试 - 用户ID: {user_id}",
+                   extra={'user_id': user_id, 'operation': '用户登录'})
 
         cur = mysql.connection.cursor()
         cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
@@ -227,11 +271,13 @@ def login():
             session['permission'] = user['permission']
             session['job_title'] = user['job_title']
 
-            logger.info(f"登录成功 - 用户ID: {user_id}, 姓名: {user['realname']}, 职务: {user['job_title']}, 权限: {user['permission']}")
+            logger.info(f"登录成功 - 用户ID: {user_id}, 姓名: {user['realname']}, 职务: {user['job_title']}, 权限: {user['permission']}",
+                       extra={'user_id': user_id, 'operation': '用户登录'})
             flash(f'欢迎回来，{user["realname"]}！', 'success')
             return redirect(url_for('dashboard'))
         else:
-            logger.warning(f"登录失败 - 用户ID: {user_id} 用户名或密码错误")
+            logger.warning(f"登录失败 - 用户ID: {user_id} 用户名或密码错误",
+                          extra={'user_id': user_id, 'operation': '用户登录'})
             flash('用户ID或密码错误', 'danger')
 
     return render_template('login.html')
@@ -245,7 +291,8 @@ def logout():
 
     session.clear()
 
-    logger.info(f"用户登出 - 用户ID: {user_id}, 姓名: {realname}")
+    logger.info(f"用户登出 - 用户ID: {user_id}, 姓名: {realname}",
+               extra={'user_id': user_id, 'operation': '用户登出'})
     flash('已退出登录', 'info')
     return redirect(url_for('login'))
 
@@ -265,7 +312,8 @@ def register():
             phone = request.form.get('phone', '')
             remark = request.form.get('remark', '')
 
-            logger.info(f"注册申请 - 用户ID: {user_id}, 真实姓名: {realname}, 职务: {job_title}, 权限申请: {permission}")
+            logger.info(f"注册申请 - 用户ID: {user_id}, 真实姓名: {realname}, 职务: {job_title}, 权限申请: {permission}",
+                       extra={'user_id': user_id, 'operation': '用户注册'})
 
             # 验证输入
             if not user_id or not password or not realname or not email or not phone:
@@ -290,7 +338,8 @@ def register():
             # 检查是否已有相同用户ID的待审批申请
             cur.execute("SELECT user_id FROM user_requests WHERE user_id = %s AND status = '待审批'", (user_id,))
             if cur.fetchone():
-                logger.warning(f"重复注册申请 - 用户ID: {user_id}")
+                logger.warning(f"重复注册申请 - 用户ID: {user_id}",
+                              extra={'user_id': user_id, 'operation': '用户注册'})
                 flash('您已提交过注册申请，请等待审批结果', 'warning')
                 cur.close()
                 return redirect(url_for('register'))
@@ -314,13 +363,16 @@ def register():
             mysql.connection.commit()
             cur.close()
 
-            logger.info(f"注册申请提交成功 - 用户ID: {user_id}, 真实姓名: {realname}")
+            logger.info(f"注册申请提交成功 - 用户ID: {user_id}, 真实姓名: {realname}",
+                       extra={'user_id': user_id, 'operation': '用户注册'})
             flash('注册申请已提交，请等待管理员审批。审批通过后您将收到通知。', 'success')
             return redirect(url_for('login'))
 
         except Exception as e:
-            logger.error(f"注册申请失败 - 用户ID: {user_id}, 错误: {str(e)}")
-            logger.error(traceback.format_exc())
+            logger.error(f"注册申请失败 - 用户ID: {user_id}, 错误: {str(e)}",
+                        extra={'user_id': user_id, 'operation': '用户注册'})
+            logger.error(traceback.format_exc(),
+                        extra={'user_id': user_id, 'operation': '用户注册'})
             flash(f'注册失败: {str(e)}', 'danger')
             return redirect(url_for('register'))
 
@@ -338,11 +390,13 @@ def forgot_password():
                 flash('请输入用户ID', 'danger')
                 return redirect(url_for('forgot_password'))
 
-            logger.info(f"密码重置请求 - 用户ID: {user_id}")
+            logger.info(f"密码重置请求 - 用户ID: {user_id}",
+                       extra={'user_id': user_id, 'operation': '密码重置'})
 
             # 验证用户ID格式（10位数字）
             if not re.match(r'^\d{10}$', user_id):
-                logger.warning(f"密码重置失败 - 用户ID格式不正确: {user_id}")
+                logger.warning(f"密码重置失败 - 用户ID格式不正确: {user_id}",
+                              extra={'user_id': user_id, 'operation': '密码重置'})
                 flash('用户ID格式不正确，应为10位数字（四位年份+两位部门+四位顺序号）', 'danger')
                 return redirect(url_for('forgot_password'))
 
@@ -353,7 +407,8 @@ def forgot_password():
             user = cur.fetchone()
 
             if not user:
-                logger.warning(f"密码重置失败 - 用户ID不存在: {user_id}")
+                logger.warning(f"密码重置失败 - 用户ID不存在: {user_id}",
+                              extra={'user_id': user_id, 'operation': '密码重置'})
                 flash('用户ID不存在', 'danger')
                 cur.close()
                 return redirect(url_for('forgot_password'))
@@ -372,12 +427,14 @@ def forgot_password():
             mysql.connection.commit()
             cur.close()
 
-            logger.info(f"密码重置成功 - 用户ID: {user_id}, 姓名: {user['realname']}")
+            logger.info(f"密码重置成功 - 用户ID: {user_id}, 姓名: {user['realname']}",
+                       extra={'user_id': user_id, 'operation': '密码重置'})
             flash(f'密码已重置为默认密码: 123456，请尽快登录修改密码', 'success')
             return redirect(url_for('login'))
 
         except Exception as e:
-            logger.error(f"密码重置失败 - 用户ID: {user_id}, 错误: {str(e)}")
+            logger.error(f"密码重置失败 - 用户ID: {user_id}, 错误: {str(e)}",
+                        extra={'user_id': user_id, 'operation': '密码重置'})
             flash(f'重置密码失败: {str(e)}', 'danger')
             return redirect(url_for('forgot_password'))
 
@@ -388,7 +445,8 @@ def forgot_password():
 @login_required
 def dashboard():
     """仪表板"""
-    logger.info(f"访问仪表板 - 用户: {session['user_id']}")
+    logger.info(f"访问仪表板 - 用户: {session['user_id']}",
+               extra={'user_id': session['user_id'], 'operation': '访问仪表板'})
     cur = mysql.connection.cursor()
 
     # 统计数据
@@ -521,11 +579,13 @@ def update_my_info():
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"个人信息更新成功 - 用户ID: {session['user_id']}")
+        logger.info(f"个人信息更新成功 - 用户ID: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '更新个人信息'})
         flash('个人信息更新成功', 'success')
 
     except Exception as e:
-        logger.error(f"个人信息更新失败 - 用户ID: {session['user_id']}, 错误: {str(e)}")
+        logger.error(f"个人信息更新失败 - 用户ID: {session['user_id']}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '更新个人信息'})
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('my_info'))
@@ -535,7 +595,8 @@ def update_my_info():
 @login_required
 def students():
     """学生列表 - 多条件组合查询"""
-    logger.info(f"查看学生列表 - 用户: {session['user_id']}")
+    logger.info(f"查看学生列表 - 用户: {session['user_id']}",
+               extra={'user_id': session['user_id'], 'operation': '查看学生列表'})
     page = request.args.get('page', 1, type=int)
     student_id = request.args.get('student_id', '')
     name = request.args.get('name', '')
@@ -618,7 +679,8 @@ def students():
 
     cur.close()
 
-    logger.info(f"查询学生列表结果 - 总数: {total}, 当前页: {page}")
+    logger.info(f"查询学生列表结果 - 总数: {total}, 当前页: {page}",
+               extra={'user_id': session['user_id'], 'operation': '查看学生列表'})
     return render_template('students.html',
                            students=students_page,
                            page=page,
@@ -653,7 +715,8 @@ def add_student():
         building_id = request.form.get('building_id') or None
         room_id = request.form.get('room_id') or None
 
-        logger.info(f"添加学生 - 学号: {student_id}, 姓名: {name}, 操作者: {session['user_id']}")
+        logger.info(f"添加学生 - 学号: {student_id}, 姓名: {name}, 操作者: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '添加学生'})
 
         cur = mysql.connection.cursor()
 
@@ -687,10 +750,12 @@ def add_student():
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"添加学生成功 - 学号: {student_id}, 姓名: {name}")
+        logger.info(f"添加学生成功 - 学号: {student_id}, 姓名: {name}",
+                   extra={'user_id': session['user_id'], 'operation': '添加学生'})
         flash('学生信息添加成功', 'success')
     except Exception as e:
-        logger.error(f"添加学生失败 - 学号: {student_id}, 错误: {str(e)}")
+        logger.error(f"添加学生失败 - 学号: {student_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '添加学生'})
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('students'))
@@ -710,7 +775,8 @@ def edit_student(student_id):
         building_id = request.form.get('building_id') or None
         room_id = request.form.get('room_id') or None
 
-        logger.info(f"编辑学生 - 学号: {student_id}, 新姓名: {name}, 操作者: {session['user_id']}")
+        logger.info(f"编辑学生 - 学号: {student_id}, 新姓名: {name}, 操作者: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '编辑学生'})
 
         cur = mysql.connection.cursor()
 
@@ -738,10 +804,12 @@ def edit_student(student_id):
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"编辑学生成功 - 学号: {student_id}")
+        logger.info(f"编辑学生成功 - 学号: {student_id}",
+                   extra={'user_id': session['user_id'], 'operation': '编辑学生'})
         flash('学生信息更新成功', 'success')
     except Exception as e:
-        logger.error(f"编辑学生失败 - 学号: {student_id}, 错误: {str(e)}")
+        logger.error(f"编辑学生失败 - 学号: {student_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '编辑学生'})
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('students'))
@@ -752,17 +820,20 @@ def edit_student(student_id):
 def delete_student(student_id):
     """删除学生"""
     try:
-        logger.info(f"删除学生 - 学号: {student_id}, 操作者: {session['user_id']}")
+        logger.info(f"删除学生 - 学号: {student_id}, 操作者: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '删除学生'})
 
         cur = mysql.connection.cursor()
         cur.execute("DELETE FROM students WHERE student_id = %s", (student_id,))
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"删除学生成功 - 学号: {student_id}")
+        logger.info(f"删除学生成功 - 学号: {student_id}",
+                   extra={'user_id': session['user_id'], 'operation': '删除学生'})
         flash('学生信息删除成功', 'success')
     except Exception as e:
-        logger.error(f"删除学生失败 - 学号: {student_id}, 错误: {str(e)}")
+        logger.error(f"删除学生失败 - 学号: {student_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '删除学生'})
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('students'))
@@ -772,7 +843,8 @@ def delete_student(student_id):
 @login_required
 def api_get_student(student_id):
     """获取学生信息"""
-    logger.info(f"API获取学生信息 - 学号: {student_id}")
+    logger.info(f"API获取学生信息 - 学号: {student_id}",
+               extra={'user_id': session['user_id'], 'operation': '获取学生信息'})
     cur = mysql.connection.cursor()
     cur.execute("SELECT * FROM students WHERE student_id = %s", (student_id,))
     student = cur.fetchone()
@@ -786,7 +858,8 @@ def api_get_student(student_id):
 @login_required
 def buildings():
     """公寓楼列表 - 增强查询功能"""
-    logger.info(f"查看公寓楼列表 - 用户: {session['user_id']}")
+    logger.info(f"查看公寓楼列表 - 用户: {session['user_id']}",
+               extra={'user_id': session['user_id'], 'operation': '查看公寓楼列表'})
     building_id = request.args.get('building_id', '')
     floors = request.args.get('floors', '')
     rooms_count = request.args.get('rooms_count', '')
@@ -836,7 +909,8 @@ def buildings():
     buildings_list = cur.fetchall()
     cur.close()
 
-    logger.info(f"查询公寓楼列表结果 - 数量: {len(buildings_list)}")
+    logger.info(f"查询公寓楼列表结果 - 数量: {len(buildings_list)}",
+               extra={'user_id': session['user_id'], 'operation': '查看公寓楼列表'})
     return render_template('buildings.html',
                            buildings=buildings_list,
                            filters={
@@ -859,7 +933,8 @@ def add_building():
         rooms_count = request.form.get('rooms_count', type=int)
         commission_date = request.form.get('commission_date')
 
-        logger.info(f"添加公寓楼 - 楼号: {building_id}, 楼层: {floors}, 房间数: {rooms_count}")
+        logger.info(f"添加公寓楼 - 楼号: {building_id}, 楼层: {floors}, 房间数: {rooms_count}",
+                   extra={'user_id': session['user_id'], 'operation': '添加公寓楼'})
 
         cur = mysql.connection.cursor()
         cur.execute("""
@@ -870,10 +945,12 @@ def add_building():
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"添加公寓楼成功 - 楼号: {building_id}")
+        logger.info(f"添加公寓楼成功 - 楼号: {building_id}",
+                   extra={'user_id': session['user_id'], 'operation': '添加公寓楼'})
         flash('公寓楼添加成功', 'success')
     except Exception as e:
-        logger.error(f"添加公寓楼失败 - 楼号: {building_id}, 错误: {str(e)}")
+        logger.error(f"添加公寓楼失败 - 楼号: {building_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '添加公寓楼'})
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('buildings'))
@@ -891,7 +968,8 @@ def edit_building(building_id):
         commission_date = request.form.get('commission_date')
 
         logger.info(
-            f"编辑公寓楼 - 原楼号: {building_id}, 新楼号: {new_building_id}, 新楼层: {floors}, 新房间数: {rooms_count}")
+            f"编辑公寓楼 - 原楼号: {building_id}, 新楼号: {new_building_id}, 新楼层: {floors}, 新房间数: {rooms_count}",
+            extra={'user_id': session['user_id'], 'operation': '编辑公寓楼'})
 
         cur = mysql.connection.cursor()
 
@@ -904,7 +982,8 @@ def edit_building(building_id):
             """, (new_building_id, floors, rooms_count, commission_date, building_id))
             mysql.connection.commit()
             cur.close()
-            logger.info(f"编辑公寓楼成功 - 楼号: {building_id}")
+            logger.info(f"编辑公寓楼成功 - 楼号: {building_id}",
+                       extra={'user_id': session['user_id'], 'operation': '编辑公寓楼'})
             flash('公寓楼信息更新成功', 'success')
             return redirect(url_for('buildings'))
 
@@ -951,20 +1030,23 @@ def edit_building(building_id):
             # 提交事务
             mysql.connection.commit()
 
-            logger.info(f"编辑公寓楼成功 - 原楼号: {building_id}, 新楼号: {new_building_id}")
+            logger.info(f"编辑公寓楼成功 - 原楼号: {building_id}, 新楼号: {new_building_id}",
+                       extra={'user_id': session['user_id'], 'operation': '编辑公寓楼'})
             flash('公寓楼信息更新成功', 'success')
 
         except Exception as e:
             # 回滚事务
             mysql.connection.rollback()
-            logger.error(f"编辑公寓楼事务失败 - 楼号: {building_id}, 错误: {str(e)}")
+            logger.error(f"编辑公寓楼事务失败 - 楼号: {building_id}, 错误: {str(e)}",
+                        extra={'user_id': session['user_id'], 'operation': '编辑公寓楼'})
             flash(f'更新失败: {str(e)}', 'danger')
 
         finally:
             cur.close()
 
     except Exception as e:
-        logger.error(f"编辑公寓楼失败 - 楼号: {building_id}, 错误: {str(e)}")
+        logger.error(f"编辑公寓楼失败 - 楼号: {building_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '编辑公寓楼'})
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('buildings'))
@@ -975,17 +1057,20 @@ def edit_building(building_id):
 def delete_building(building_id):
     """删除公寓楼"""
     try:
-        logger.info(f"删除公寓楼 - 楼号: {building_id}, 操作者: {session['user_id']}")
+        logger.info(f"删除公寓楼 - 楼号: {building_id}, 操作者: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '删除公寓楼'})
 
         cur = mysql.connection.cursor()
         cur.execute("DELETE FROM buildings WHERE building_id = %s", (building_id,))
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"删除公寓楼成功 - 楼号: {building_id}")
+        logger.info(f"删除公寓楼成功 - 楼号: {building_id}",
+                   extra={'user_id': session['user_id'], 'operation': '删除公寓楼'})
         flash('公寓楼删除成功', 'success')
     except Exception as e:
-        logger.error(f"删除公寓楼失败 - 楼号: {building_id}, 错误: {str(e)}")
+        logger.error(f"删除公寓楼失败 - 楼号: {building_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '删除公寓楼'})
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('buildings'))
@@ -995,7 +1080,8 @@ def delete_building(building_id):
 @login_required
 def rooms():
     """寝室列表 - 增加查询功能"""
-    logger.info(f"查看寝室列表 - 用户: {session['user_id']}")
+    logger.info(f"查看寝室列表 - 用户: {session['user_id']}",
+               extra={'user_id': session['user_id'], 'operation': '查看寝室列表'})
     building_filter = request.args.get('building', '')
     room_id_filter = request.args.get('room_id', '')
     available_beds_filter = request.args.get('available_beds', '')
@@ -1056,7 +1142,8 @@ def rooms():
 
     cur.close()
 
-    logger.info(f"查询寝室列表结果 - 数量: {len(rooms_list)}")
+    logger.info(f"查询寝室列表结果 - 数量: {len(rooms_list)}",
+               extra={'user_id': session['user_id'], 'operation': '查看寝室列表'})
     return render_template('rooms.html',
                           rooms=rooms_list,
                           buildings=buildings,
@@ -1080,7 +1167,8 @@ def add_room():
         fee = request.form.get('fee', type=float)
         phone = request.form.get('phone')
 
-        logger.info(f"添加寝室 - 楼号: {building_id}, 寝室号: {room_id}, 容量: {capacity}, 费用: {fee}")
+        logger.info(f"添加寝室 - 楼号: {building_id}, 寝室号: {room_id}, 容量: {capacity}, 费用: {fee}",
+                   extra={'user_id': session['user_id'], 'operation': '添加寝室'})
 
         cur = mysql.connection.cursor()
 
@@ -1099,10 +1187,12 @@ def add_room():
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"添加寝室成功 - 楼号: {building_id}, 寝室号: {room_id}")
+        logger.info(f"添加寝室成功 - 楼号: {building_id}, 寝室号: {room_id}",
+                   extra={'user_id': session['user_id'], 'operation': '添加寝室'})
         flash('寝室添加成功', 'success')
     except Exception as e:
-        logger.error(f"添加寝室失败 - 楼号: {building_id}, 寝室号: {room_id}, 错误: {str(e)}")
+        logger.error(f"添加寝室失败 - 楼号: {building_id}, 寝室号: {room_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '添加寝室'})
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('rooms'))
@@ -1121,7 +1211,8 @@ def edit_room(building_id, room_id):
         phone = request.form.get('phone')
 
         logger.info(
-            f"编辑寝室 - 原楼号: {building_id}, 原寝室号: {room_id}, 新楼号: {new_building_id}, 新寝室号: {new_room_id}")
+            f"编辑寝室 - 原楼号: {building_id}, 原寝室号: {room_id}, 新楼号: {new_building_id}, 新寝室号: {new_room_id}",
+            extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
 
         cur = mysql.connection.cursor()
 
@@ -1160,18 +1251,21 @@ def edit_room(building_id, room_id):
             """, (new_building_id, new_room_id, building_id, room_id))
 
             mysql.connection.commit()
-            logger.info(f"编辑寝室成功 - 原楼号: {building_id}, 原寝室号: {room_id}")
+            logger.info(f"编辑寝室成功 - 原楼号: {building_id}, 原寝室号: {room_id}",
+                       extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
             flash('寝室信息更新成功', 'success')
 
         except Exception as e:
             mysql.connection.rollback()
-            logger.error(f"编辑寝室事务失败 - 楼号: {building_id}, 寝室号: {room_id}, 错误: {str(e)}")
+            logger.error(f"编辑寝室事务失败 - 楼号: {building_id}, 寝室号: {room_id}, 错误: {str(e)}",
+                        extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
             flash(f'更新失败: {str(e)}', 'danger')
         finally:
             cur.close()
 
     except Exception as e:
-        logger.error(f"编辑寝室失败 - 楼号: {building_id}, 寝室号: {room_id}, 错误: {str(e)}")
+        logger.error(f"编辑寝室失败 - 楼号: {building_id}, 寝室号: {room_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('rooms'))
@@ -1182,17 +1276,20 @@ def edit_room(building_id, room_id):
 def delete_room(building_id, room_id):
     """删除寝室"""
     try:
-        logger.info(f"删除寝室 - 楼号: {building_id}, 寝室号: {room_id}, 操作者: {session['user_id']}")
+        logger.info(f"删除寝室 - 楼号: {building_id}, 寝室号: {room_id}, 操作者: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '删除寝室'})
 
         cur = mysql.connection.cursor()
         cur.execute("DELETE FROM rooms WHERE building_id = %s AND room_id = %s", (building_id, room_id))
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"删除寝室成功 - 楼号: {building_id}, 寝室号: {room_id}")
+        logger.info(f"删除寝室成功 - 楼号: {building_id}, 寝室号: {room_id}",
+                   extra={'user_id': session['user_id'], 'operation': '删除寝室'})
         flash('寝室删除成功', 'success')
     except Exception as e:
-        logger.error(f"删除寝室失败 - 楼号: {building_id}, 寝室号: {room_id}, 错误: {str(e)}")
+        logger.error(f"删除寝室失败 - 楼号: {building_id}, 寝室号: {room_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '删除寝室'})
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('rooms'))
@@ -1202,7 +1299,8 @@ def delete_room(building_id, room_id):
 @login_required
 def api_get_rooms(building_id):
     """获取指定楼栋的房间"""
-    logger.info(f"API获取房间列表 - 楼号: {building_id}")
+    logger.info(f"API获取房间列表 - 楼号: {building_id}",
+               extra={'user_id': session['user_id'], 'operation': '获取房间列表'})
     cur = mysql.connection.cursor()
     cur.execute("SELECT room_id, capacity, fee FROM rooms WHERE building_id = %s ORDER BY CAST(room_id AS UNSIGNED), room_id", (building_id,))
     rooms = cur.fetchall()
@@ -1214,7 +1312,8 @@ def api_get_rooms(building_id):
 @login_required
 def payments():
     """交费记录列表 - 增强查询功能"""
-    logger.info(f"查看交费记录 - 用户: {session['user_id']}")
+    logger.info(f"查看交费记录 - 用户: {session['user_id']}",
+               extra={'user_id': session['user_id'], 'operation': '查看交费记录'})
     page = request.args.get('page', 1, type=int)
     payment_id = request.args.get('payment_id', '')
     student_id = request.args.get('student_id', '')
@@ -1306,7 +1405,8 @@ def payments():
 
     cur.close()
 
-    logger.info(f"查询交费记录结果 - 总数: {total}, 总金额: {total_amount}")
+    logger.info(f"查询交费记录结果 - 总数: {total}, 总金额: {total_amount}",
+               extra={'user_id': session['user_id'], 'operation': '查看交费记录'})
     return render_template('payments.html',
                            payments=payments_page,
                            page=page,
@@ -1340,7 +1440,8 @@ def add_payment():
         amount = request.form.get('amount', type=float)
         remark = request.form.get('remark', '')
 
-        logger.info(f"添加交费记录 - 学号: {student_id}, 类型: {payment_type}, 金额: {amount}")
+        logger.info(f"添加交费记录 - 学号: {student_id}, 类型: {payment_type}, 金额: {amount}",
+                   extra={'user_id': session['user_id'], 'operation': '添加交费记录'})
 
         cur = mysql.connection.cursor()
 
@@ -1361,10 +1462,12 @@ def add_payment():
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"添加交费记录成功 - 学号: {student_id}, 金额: {amount}")
+        logger.info(f"添加交费记录成功 - 学号: {student_id}, 金额: {amount}",
+                   extra={'user_id': session['user_id'], 'operation': '添加交费记录'})
         flash('交费记录添加成功', 'success')
     except Exception as e:
-        logger.error(f"添加交费记录失败 - 学号: {student_id}, 错误: {str(e)}")
+        logger.error(f"添加交费记录失败 - 学号: {student_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '添加交费记录'})
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('payments'))
@@ -1380,7 +1483,8 @@ def edit_payment(payment_id):
         amount = request.form.get('amount', type=float)
         remark = request.form.get('remark', '')
 
-        logger.info(f"修改交费记录 - 记录ID: {payment_id}, 新金额: {amount}")
+        logger.info(f"修改交费记录 - 记录ID: {payment_id}, 新金额: {amount}",
+                   extra={'user_id': session['user_id'], 'operation': '修改交费记录'})
 
         cur = mysql.connection.cursor()
 
@@ -1393,10 +1497,12 @@ def edit_payment(payment_id):
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"修改交费记录成功 - 记录ID: {payment_id}")
+        logger.info(f"修改交费记录成功 - 记录ID: {payment_id}",
+                   extra={'user_id': session['user_id'], 'operation': '修改交费记录'})
         flash('交费记录修改成功', 'success')
     except Exception as e:
-        logger.error(f"修改交费记录失败 - 记录ID: {payment_id}, 错误: {str(e)}")
+        logger.error(f"修改交费记录失败 - 记录ID: {payment_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '修改交费记录'})
         flash(f'修改失败: {str(e)}', 'danger')
 
     return redirect(url_for('payments'))
@@ -1407,17 +1513,20 @@ def edit_payment(payment_id):
 def delete_payment(payment_id):
     """删除交费记录"""
     try:
-        logger.info(f"删除交费记录 - 记录ID: {payment_id}, 操作者: {session['user_id']}")
+        logger.info(f"删除交费记录 - 记录ID: {payment_id}, 操作者: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '删除交费记录'})
 
         cur = mysql.connection.cursor()
         cur.execute("DELETE FROM payments WHERE payment_id = %s", (payment_id,))
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"删除交费记录成功 - 记录ID: {payment_id}")
+        logger.info(f"删除交费记录成功 - 记录ID: {payment_id}",
+                   extra={'user_id': session['user_id'], 'operation': '删除交费记录'})
         flash('交费记录删除成功', 'success')
     except Exception as e:
-        logger.error(f"删除交费记录失败 - 记录ID: {payment_id}, 错误: {str(e)}")
+        logger.error(f"删除交费记录失败 - 记录ID: {payment_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '删除交费记录'})
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('payments'))
@@ -1427,7 +1536,8 @@ def delete_payment(payment_id):
 @login_required
 def reports():
     """统计报表"""
-    logger.info(f"查看统计报表 - 用户: {session['user_id']}")
+    logger.info(f"查看统计报表 - 用户: {session['user_id']}",
+               extra={'user_id': session['user_id'], 'operation': '查看统计报表'})
     cur = mysql.connection.cursor()
 
     # 月度统计
@@ -1497,7 +1607,8 @@ def reports():
     from datetime import datetime
     now = datetime.now()
 
-    logger.info(f"统计报表查询完成 - 月度统计: {len(monthly_stats)}条")
+    logger.info(f"统计报表查询完成 - 月度统计: {len(monthly_stats)}条",
+               extra={'user_id': session['user_id'], 'operation': '查看统计报表'})
     return render_template('reports.html',
                            monthly_stats=monthly_stats,
                            building_stats=building_stats,
@@ -1510,7 +1621,8 @@ def reports():
 @login_required
 def announcements():
     """通知公告列表 - 多条件组合查询"""
-    logger.info(f"查看通知公告 - 用户: {session['user_id']}")
+    logger.info(f"查看通知公告 - 用户: {session['user_id']}",
+               extra={'user_id': session['user_id'], 'operation': '查看通知公告'})
     page = request.args.get('page', 1, type=int)
     title = request.args.get('title', '')
     publisher_name = request.args.get('publisher_name', '')
@@ -1575,7 +1687,8 @@ def announcements():
 
     cur.close()
 
-    logger.info(f"查询通知公告结果 - 总数: {total}")
+    logger.info(f"查询通知公告结果 - 总数: {total}",
+               extra={'user_id': session['user_id'], 'operation': '查看通知公告'})
     return render_template('announcements.html',
                            announcements=announcements_page,
                            page=page,
@@ -1600,7 +1713,8 @@ def add_announcement():
         content = request.form.get('content')
         permission = request.form.get('permission', '全部')
 
-        logger.info(f"添加通知公告 - 标题: {title}, 发布者: {session['realname']}")
+        logger.info(f"添加通知公告 - 标题: {title}, 发布者: {session['realname']}",
+                   extra={'user_id': session['user_id'], 'operation': '添加通知公告'})
 
         if not title or not content:
             flash('请填写标题和内容', 'danger')
@@ -1616,10 +1730,12 @@ def add_announcement():
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"添加通知公告成功 - 标题: {title}")
+        logger.info(f"添加通知公告成功 - 标题: {title}",
+                   extra={'user_id': session['user_id'], 'operation': '添加通知公告'})
         flash('通知发布成功', 'success')
     except Exception as e:
-        logger.error(f"添加通知公告失败 - 标题: {title}, 错误: {str(e)}")
+        logger.error(f"添加通知公告失败 - 标题: {title}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '添加通知公告'})
         flash(f'发布失败: {str(e)}', 'danger')
 
     return redirect(url_for('announcements'))
@@ -1634,7 +1750,8 @@ def edit_announcement(announcement_id):
         content = request.form.get('content')
         permission = request.form.get('permission', '全部')
 
-        logger.info(f"编辑通知公告 - ID: {announcement_id}, 新标题: {title}")
+        logger.info(f"编辑通知公告 - ID: {announcement_id}, 新标题: {title}",
+                   extra={'user_id': session['user_id'], 'operation': '编辑通知公告'})
 
         if not title or not content:
             flash('请填写标题和内容', 'danger')
@@ -1665,10 +1782,12 @@ def edit_announcement(announcement_id):
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"编辑通知公告成功 - ID: {announcement_id}")
+        logger.info(f"编辑通知公告成功 - ID: {announcement_id}",
+                   extra={'user_id': session['user_id'], 'operation': '编辑通知公告'})
         flash('通知修改成功', 'success')
     except Exception as e:
-        logger.error(f"编辑通知公告失败 - ID: {announcement_id}, 错误: {str(e)}")
+        logger.error(f"编辑通知公告失败 - ID: {announcement_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '编辑通知公告'})
         flash(f'修改失败: {str(e)}', 'danger')
 
     return redirect(url_for('announcements'))
@@ -1679,7 +1798,8 @@ def edit_announcement(announcement_id):
 def delete_announcement(announcement_id):
     """删除通知公告"""
     try:
-        logger.info(f"删除通知公告 - ID: {announcement_id}, 操作者: {session['user_id']}")
+        logger.info(f"删除通知公告 - ID: {announcement_id}, 操作者: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '删除通知公告'})
 
         cur = mysql.connection.cursor()
 
@@ -1702,10 +1822,12 @@ def delete_announcement(announcement_id):
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"删除通知公告成功 - ID: {announcement_id}")
+        logger.info(f"删除通知公告成功 - ID: {announcement_id}",
+                   extra={'user_id': session['user_id'], 'operation': '删除通知公告'})
         flash('通知删除成功', 'success')
     except Exception as e:
-        logger.error(f"删除通知公告失败 - ID: {announcement_id}, 错误: {str(e)}")
+        logger.error(f"删除通知公告失败 - ID: {announcement_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '删除通知公告'})
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('announcements'))
@@ -1714,7 +1836,8 @@ def delete_announcement(announcement_id):
 @login_required
 def view_announcement(announcement_id):
     """查看通知详情"""
-    logger.info(f"查看通知详情 - ID: {announcement_id}, 用户: {session['user_id']}")
+    logger.info(f"查看通知详情 - ID: {announcement_id}, 用户: {session['user_id']}",
+               extra={'user_id': session['user_id'], 'operation': '查看通知详情'})
 
     cur = mysql.connection.cursor()
 
@@ -1732,7 +1855,8 @@ def view_announcement(announcement_id):
     cur.close()
 
     if not announcement:
-        logger.warning(f"查看通知详情失败 - 无权限或不存在, ID: {announcement_id}")
+        logger.warning(f"查看通知详情失败 - 无权限或不存在, ID: {announcement_id}",
+                      extra={'user_id': session['user_id'], 'operation': '查看通知详情'})
         flash('通知不存在或没有权限查看', 'danger')
         return redirect(url_for('announcements'))
 
@@ -1747,7 +1871,8 @@ def view_announcement(announcement_id):
 @admin_required
 def users():
     """用户管理 - 添加查询功能"""
-    logger.info(f"查看用户列表 - 管理员: {session['user_id']}")
+    logger.info(f"查看用户列表 - 管理员: {session['user_id']}",
+               extra={'user_id': session['user_id'], 'operation': '查看用户列表'})
     user_id = request.args.get('user_id', '')
     realname = request.args.get('realname', '')
     job_title = request.args.get('job_title', '')
@@ -1809,7 +1934,8 @@ def users():
 
     cur.close()
 
-    logger.info(f"用户列表查询结果 - 数量: {len(users_list)}")
+    logger.info(f"用户列表查询结果 - 数量: {len(users_list)}",
+               extra={'user_id': session['user_id'], 'operation': '查看用户列表'})
     return render_template('users.html',
                            users=users_list,
                            pending_requests_count=pending_count,
@@ -1838,7 +1964,8 @@ def add_user():
         email = request.form.get('email', '')
         phone = request.form.get('phone', '')
 
-        logger.info(f"添加用户 - 用户ID: {user_id}, 真实姓名: {realname}, 职务: {job_title}, 权限: {permission}")
+        logger.info(f"添加用户 - 用户ID: {user_id}, 真实姓名: {realname}, 职务: {job_title}, 权限: {permission}",
+                   extra={'user_id': session['user_id'], 'operation': '添加用户'})
 
         if not user_id or not password or not realname or not job_title:
             flash('请填写完整信息', 'danger')
@@ -1868,10 +1995,12 @@ def add_user():
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"添加用户成功 - 用户ID: {user_id}, 真实姓名: {realname}")
+        logger.info(f"添加用户成功 - 用户ID: {user_id}, 真实姓名: {realname}",
+                   extra={'user_id': session['user_id'], 'operation': '添加用户'})
         flash(f'用户添加成功！用户ID: {user_id}', 'success')
     except Exception as e:
-        logger.error(f"添加用户失败 - 用户ID: {user_id}, 错误: {str(e)}")
+        logger.error(f"添加用户失败 - 用户ID: {user_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '添加用户'})
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('users'))
@@ -1889,7 +2018,8 @@ def edit_user(user_id):
         phone = request.form.get('phone', '')
         password = request.form.get('password')
 
-        logger.info(f"编辑用户 - 用户ID: {user_id}, 新真实姓名: {realname}, 新职务: {job_title}, 新权限: {permission}")
+        logger.info(f"编辑用户 - 用户ID: {user_id}, 新真实姓名: {realname}, 新职务: {job_title}, 新权限: {permission}",
+                   extra={'user_id': session['user_id'], 'operation': '编辑用户'})
 
         cur = mysql.connection.cursor()
 
@@ -1910,10 +2040,12 @@ def edit_user(user_id):
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"编辑用户成功 - 用户ID: {user_id}")
+        logger.info(f"编辑用户成功 - 用户ID: {user_id}",
+                   extra={'user_id': session['user_id'], 'operation': '编辑用户'})
         flash('用户信息更新成功', 'success')
     except Exception as e:
-        logger.error(f"编辑用户失败 - 用户ID: {user_id}, 错误: {str(e)}")
+        logger.error(f"编辑用户失败 - 用户ID: {user_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '编辑用户'})
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('users'))
@@ -1924,22 +2056,26 @@ def edit_user(user_id):
 def delete_user(user_id):
     """删除用户"""
     if user_id == session.get('user_id'):
-        logger.warning(f"尝试删除当前登录用户 - 用户ID: {user_id}")
+        logger.warning(f"尝试删除当前登录用户 - 用户ID: {user_id}",
+                      extra={'user_id': session['user_id'], 'operation': '删除用户'})
         flash('不能删除当前登录用户', 'danger')
         return redirect(url_for('users'))
 
     try:
-        logger.info(f"删除用户 - 用户ID: {user_id}, 操作者: {session['user_id']}")
+        logger.info(f"删除用户 - 用户ID: {user_id}, 操作者: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '删除用户'})
 
         cur = mysql.connection.cursor()
         cur.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"删除用户成功 - 用户ID: {user_id}")
+        logger.info(f"删除用户成功 - 用户ID: {user_id}",
+                   extra={'user_id': session['user_id'], 'operation': '删除用户'})
         flash('用户删除成功', 'success')
     except Exception as e:
-        logger.error(f"删除用户失败 - 用户ID: {user_id}, 错误: {str(e)}")
+        logger.error(f"删除用户失败 - 用户ID: {user_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '删除用户'})
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('users'))
@@ -1949,7 +2085,8 @@ def delete_user(user_id):
 @admin_required
 def user_requests():
     """查看待审批的注册申请 - 增加查询功能"""
-    logger.info(f"查看注册申请 - 管理员: {session['user_id']}")
+    logger.info(f"查看注册申请 - 管理员: {session['user_id']}",
+               extra={'user_id': session['user_id'], 'operation': '查看注册申请'})
     status_filter = request.args.get('status', '待审批')
     request_id = request.args.get('request_id', '')
     user_id = request.args.get('user_id', '')
@@ -2024,7 +2161,8 @@ def user_requests():
     requests_list = cur.fetchall()
     cur.close()
 
-    logger.info(f"查询注册申请结果 - 数量: {len(requests_list)}")
+    logger.info(f"查询注册申请结果 - 数量: {len(requests_list)}",
+               extra={'user_id': session['user_id'], 'operation': '查看注册申请'})
     return render_template('user_requests.html',
                            requests=requests_list,
                            status_filter=status_filter,
@@ -2101,11 +2239,13 @@ def approve_user_request(request_id):
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"批准注册申请成功 - 申请ID: {request_id}, 用户ID: {user_request['user_id']}, 授予权限: {granted_permission}, 审批人: {session['user_id']}")
+        logger.info(f"批准注册申请成功 - 申请ID: {request_id}, 用户ID: {user_request['user_id']}, 授予权限: {granted_permission}, 审批人: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '批准注册申请'})
         flash(f'已批准用户申请！用户ID: {user_request["user_id"]}，授予权限: {granted_permission}', 'success')
 
     except Exception as e:
-        logger.error(f"批准注册申请失败 - 申请ID: {request_id}, 错误: {str(e)}")
+        logger.error(f"批准注册申请失败 - 申请ID: {request_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '批准注册申请'})
         flash(f'批准失败: {str(e)}', 'danger')
 
     return redirect(url_for('user_requests'))
@@ -2148,11 +2288,13 @@ def reject_user_request(request_id):
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"拒绝注册申请 - 申请ID: {request_id}, 备注: {admin_remark}, 审批人: {session['user_id']}")
+        logger.info(f"拒绝注册申请 - 申请ID: {request_id}, 备注: {admin_remark}, 审批人: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '拒绝注册申请'})
         flash('已拒绝用户申请', 'success')
 
     except Exception as e:
-        logger.error(f"拒绝注册申请失败 - 申请ID: {request_id}, 错误: {str(e)}")
+        logger.error(f"拒绝注册申请失败 - 申请ID: {request_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '拒绝注册申请'})
         flash(f'拒绝失败: {str(e)}', 'danger')
 
     return redirect(url_for('user_requests'))
@@ -2184,11 +2326,13 @@ def delete_user_request(request_id):
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"删除注册申请记录 - 申请ID: {request_id}")
+        logger.info(f"删除注册申请记录 - 申请ID: {request_id}",
+                   extra={'user_id': session['user_id'], 'operation': '删除注册申请'})
         flash('申请记录已删除', 'success')
 
     except Exception as e:
-        logger.error(f"删除注册申请失败 - 申请ID: {request_id}, 错误: {str(e)}")
+        logger.error(f"删除注册申请失败 - 申请ID: {request_id}, 错误: {str(e)}",
+                    extra={'user_id': session['user_id'], 'operation': '删除注册申请'})
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('user_requests'))
@@ -2198,19 +2342,20 @@ def delete_user_request(request_id):
 @admin_required
 def logs():
     """日志查看页面"""
-    logger.info(f"访问日志页面 - 管理员: {session['user_id']}")
+    logger.info(f"访问日志页面 - 管理员: {session['user_id']}",
+               extra={'user_id': session['user_id'], 'operation': '访问日志页面'})
     return render_template('logs.html')
 
 @app.route('/api/logs')
 @admin_required
 def api_get_logs():
-    """获取日志数据API"""
+    """获取日志数据API - 支持真正的查询功能，包括时间范围查询"""
     try:
         page = request.args.get('page', 1, type=int)
         limit = request.args.get('limit', 50, type=int)
         level = request.args.get('level', '')
-        user_id = request.args.get('userId', '')
-        operation = request.args.get('operation', '')
+        user_id = request.args.get('user_id', '')  # 改为 user_id
+        operation = request.args.get('operation', '')  # 改为 operation
         keyword = request.args.get('keyword', '')
         start_time = request.args.get('start', '')
         end_time = request.args.get('end', '')
@@ -2239,30 +2384,67 @@ def api_get_logs():
             if not line:
                 continue
 
-            # 解析日志行格式: 时间 - 模块名 - 级别 - 消息
-            parts = line.split(' - ', 3)
-            if len(parts) < 4:
-                continue
+            # 解析日志行格式: 时间 - 模块名 - 级别 - [用户ID:xxx] - [操作:xxx] - 消息
+            parts = line.split(' - ', 5)
+            if len(parts) < 6:
+                # 尝试旧格式兼容
+                parts = line.split(' - ', 3)
+                if len(parts) < 4:
+                    continue
 
-            log_time, module, log_level, message = parts
+                log_time, module, log_level, message = parts
+                extracted_user_id = '未登录'
+                extracted_operation = '未知操作'
+
+                # 从消息中尝试提取用户ID和操作
+                user_match = re.search(r'用户ID:\s*([^,\s]+)', message)
+                if user_match:
+                    extracted_user_id = user_match.group(1)
+
+                operation_match = re.search(r'执行\s*([^-\s]+)', message)
+                if operation_match:
+                    extracted_operation = operation_match.group(1)
+            else:
+                # 新格式
+                log_time, module, log_level, user_id_part, operation_part, message = parts
+
+                # 提取用户ID和操作
+                extracted_user_id = user_id_part.replace('[用户ID:', '').replace(']', '').strip()
+                extracted_operation = operation_part.replace('[操作:', '').replace(']', '').strip()
 
             # 应用筛选条件
             if level and log_level != level:
                 continue
 
-            if user_id and user_id not in message:
+            if user_id and user_id not in extracted_user_id:
                 continue
 
-            if operation and operation not in message:
+            if operation and operation not in extracted_operation:
                 continue
 
             if keyword and keyword.lower() not in message.lower():
                 continue
 
-            if start_time and log_time < start_time:
-                continue
+            # 时间范围筛选 - 这是修复的关键部分
+            try:
+                # 将日志时间字符串转换为datetime对象
+                log_datetime = datetime.strptime(log_time, '%Y-%m-%d %H:%M:%S')
 
-            if end_time and log_time > end_time:
+                # 检查开始时间
+                if start_time:
+                    start_datetime = datetime.strptime(start_time, '%Y-%m-%dT%H:%M')
+                    if log_datetime < start_datetime:
+                        continue
+
+                # 检查结束时间
+                if end_time:
+                    # 结束时间需要包含该分钟内的所有日志，所以加59秒
+                    end_datetime = datetime.strptime(end_time, '%Y-%m-%dT%H:%M')
+                    end_datetime = end_datetime.replace(second=59)
+                    if log_datetime > end_datetime:
+                        continue
+            except ValueError as e:
+                # 如果时间解析失败，跳过这条日志
                 continue
 
             # 统计
@@ -2278,6 +2460,8 @@ def api_get_logs():
                 'time': log_time,
                 'module': module,
                 'level': log_level,
+                'user_id': extracted_user_id,
+                'operation': extracted_operation,
                 'message': message
             })
 
@@ -2296,7 +2480,8 @@ def api_get_logs():
         })
 
     except Exception as e:
-        logger.error(f"获取日志数据失败: {str(e)}")
+        logger.error(f"获取日志数据失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '获取日志数据'})
         return jsonify({
             'success': False,
             'message': str(e)
@@ -2320,7 +2505,8 @@ def api_clear_logs():
             f.write('')
 
         # 记录清空操作
-        logger.info(f"日志文件已清空 - 操作者: {session['user_id']}")
+        logger.info(f"日志文件已清空 - 操作者: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '清空日志文件'})
 
         return jsonify({
             'success': True,
@@ -2328,7 +2514,8 @@ def api_clear_logs():
         })
 
     except Exception as e:
-        logger.error(f"清空日志文件失败: {str(e)}")
+        logger.error(f"清空日志文件失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '清空日志文件'})
         return jsonify({
             'success': False,
             'message': str(e)
@@ -2349,7 +2536,8 @@ def api_download_logs():
             }), 404
 
         # 记录下载操作
-        logger.info(f"日志文件已下载 - 操作者: {session['user_id']}")
+        logger.info(f"日志文件已下载 - 操作者: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '下载日志文件'})
 
         return send_file(
             log_file,
@@ -2359,7 +2547,8 @@ def api_download_logs():
         )
 
     except Exception as e:
-        logger.error(f"下载日志文件失败: {str(e)}")
+        logger.error(f"下载日志文件失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '下载日志文件'})
         return jsonify({
             'success': False,
             'message': str(e)
@@ -2370,7 +2559,8 @@ def api_download_logs():
 @admin_required
 def backup_management():
     """数据库备份管理页面"""
-    logger.info(f"访问数据库备份管理 - 管理员: {session['user_id']}")
+    logger.info(f"访问数据库备份管理 - 管理员: {session['user_id']}",
+               extra={'user_id': session['user_id'], 'operation': '访问数据库备份管理'})
     return render_template('backup.html')
 
 @app.route('/api/backup/create', methods=['POST'])
@@ -2392,13 +2582,16 @@ def api_create_backup():
         result = backup_manager.create_backup(backup_type, comment)
 
         if result['success']:
-            logger.info(f"数据库备份创建成功 - 文件: {result['filename']}, 操作者: {session['user_id']}")
+            logger.info(f"数据库备份创建成功 - 文件: {result['filename']}, 操作者: {session['user_id']}",
+                       extra={'user_id': session['user_id'], 'operation': '创建数据库备份'})
         else:
-            logger.error(f"数据库备份创建失败 - 错误: {result.get('error', '未知错误')}, 操作者: {session['user_id']}")
+            logger.error(f"数据库备份创建失败 - 错误: {result.get('error', '未知错误')}, 操作者: {session['user_id']}",
+                        extra={'user_id': session['user_id'], 'operation': '创建数据库备份'})
 
         return jsonify(result)
     except Exception as e:
-        logger.error(f"创建备份API失败: {str(e)}")
+        logger.error(f"创建备份API失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '创建数据库备份'})
         return jsonify({
             'success': False,
             'message': f'创建备份失败: {str(e)}'
@@ -2418,7 +2611,8 @@ def api_list_backups():
             'count': len(backups)
         })
     except Exception as e:
-        logger.error(f"列出备份文件失败: {str(e)}")
+        logger.error(f"列出备份文件失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '列出备份文件'})
         return jsonify({
             'success': False,
             'message': f'列出备份文件失败: {str(e)}'
@@ -2434,13 +2628,16 @@ def api_delete_backup(filename):
         result = backup_manager.delete_backup(filename)
 
         if result['success']:
-            logger.info(f"删除备份文件成功 - 文件: {filename}, 操作者: {session['user_id']}")
+            logger.info(f"删除备份文件成功 - 文件: {filename}, 操作者: {session['user_id']}",
+                       extra={'user_id': session['user_id'], 'operation': '删除数据库备份'})
         else:
-            logger.warning(f"删除备份文件失败 - 文件: {filename}, 错误: {result.get('message', '未知错误')}")
+            logger.warning(f"删除备份文件失败 - 文件: {filename}, 错误: {result.get('message', '未知错误')}",
+                          extra={'user_id': session['user_id'], 'operation': '删除数据库备份'})
 
         return jsonify(result)
     except Exception as e:
-        logger.error(f"删除备份文件API失败: {str(e)}")
+        logger.error(f"删除备份文件API失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '删除数据库备份'})
         return jsonify({
             'success': False,
             'message': f'删除备份文件失败: {str(e)}'
@@ -2465,7 +2662,8 @@ def api_get_backup_info(filename):
                 'message': '备份文件不存在'
             }), 404
     except Exception as e:
-        logger.error(f"获取备份文件信息失败: {str(e)}")
+        logger.error(f"获取备份文件信息失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '获取备份文件信息'})
         return jsonify({
             'success': False,
             'message': f'获取备份文件信息失败: {str(e)}'
@@ -2484,7 +2682,8 @@ def api_get_disk_usage():
             'usage': usage
         })
     except Exception as e:
-        logger.error(f"获取磁盘使用情况失败: {str(e)}")
+        logger.error(f"获取磁盘使用情况失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '获取磁盘使用情况'})
         return jsonify({
             'success': False,
             'message': f'获取磁盘使用情况失败: {str(e)}'
@@ -2503,7 +2702,8 @@ def api_download_backup(filename):
             flash('备份文件不存在', 'danger')
             return redirect(url_for('backup_management'))
 
-        logger.info(f"下载备份文件 - 文件: {filename}, 操作者: {session['user_id']}")
+        logger.info(f"下载备份文件 - 文件: {filename}, 操作者: {session['user_id']}",
+                   extra={'user_id': session['user_id'], 'operation': '下载数据库备份'})
 
         return send_file(
             str(backup_file),
@@ -2512,7 +2712,8 @@ def api_download_backup(filename):
             mimetype='application/zip'
         )
     except Exception as e:
-        logger.error(f"下载备份文件失败: {str(e)}")
+        logger.error(f"下载备份文件失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '下载数据库备份'})
         flash(f'下载备份文件失败: {str(e)}', 'danger')
         return redirect(url_for('backup_management'))
 
@@ -2534,14 +2735,18 @@ def api_restore_backup(filename):
         result = backup_manager.restore_backup(f"backups/{filename}")
 
         if result['success']:
-            logger.warning(f"数据库恢复成功 - 文件: {filename}, 操作者: {session['user_id']}")
-            logger.warning(f"数据库已从备份恢复，操作者: {session['user_id']}")
+            logger.warning(f"数据库恢复成功 - 文件: {filename}, 操作者: {session['user_id']}",
+                          extra={'user_id': session['user_id'], 'operation': '恢复数据库备份'})
+            logger.warning(f"数据库已从备份恢复，操作者: {session['user_id']}",
+                          extra={'user_id': session['user_id'], 'operation': '恢复数据库备份'})
         else:
-            logger.error(f"数据库恢复失败 - 文件: {filename}, 错误: {result.get('message', '未知错误')}")
+            logger.error(f"数据库恢复失败 - 文件: {filename}, 错误: {result.get('message', '未知错误')}",
+                        extra={'user_id': session['user_id'], 'operation': '恢复数据库备份'})
 
         return jsonify(result)
     except Exception as e:
-        logger.error(f"恢复备份API失败: {str(e)}")
+        logger.error(f"恢复备份API失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '恢复数据库备份'})
         return jsonify({
             'success': False,
             'message': f'恢复备份失败: {str(e)}'
@@ -2552,7 +2757,8 @@ def api_restore_backup(filename):
 @admin_required
 def auto_backup_management():
     """自动备份管理页面"""
-    logger.info(f"访问自动备份管理 - 管理员: {session['user_id']}")
+    logger.info(f"访问自动备份管理 - 管理员: {session['user_id']}",
+               extra={'user_id': session['user_id'], 'operation': '访问自动备份管理'})
 
     # 获取调度器状态
     status = auto_backup_scheduler.get_status()
@@ -2578,7 +2784,8 @@ def api_auto_backup_status():
             'stats': stats
         })
     except Exception as e:
-        logger.error(f"获取自动备份状态失败: {str(e)}")
+        logger.error(f"获取自动备份状态失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '获取自动备份状态'})
         return jsonify({
             'success': False,
             'message': f'获取状态失败: {str(e)}'
@@ -2593,7 +2800,8 @@ def api_start_auto_backup():
         success = auto_backup_scheduler.start()
 
         if success:
-            logger.info(f"手动启动自动备份 - 操作者: {session['user_id']}")
+            logger.info(f"手动启动自动备份 - 操作者: {session['user_id']}",
+                       extra={'user_id': session['user_id'], 'operation': '启动自动备份'})
             return jsonify({
                 'success': True,
                 'message': '自动备份已启动'
@@ -2604,7 +2812,8 @@ def api_start_auto_backup():
                 'message': '启动自动备份失败'
             })
     except Exception as e:
-        logger.error(f"启动自动备份失败: {str(e)}")
+        logger.error(f"启动自动备份失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '启动自动备份'})
         return jsonify({
             'success': False,
             'message': f'启动失败: {str(e)}'
@@ -2619,7 +2828,8 @@ def api_stop_auto_backup():
         success = auto_backup_scheduler.stop()
 
         if success:
-            logger.info(f"手动停止自动备份 - 操作者: {session['user_id']}")
+            logger.info(f"手动停止自动备份 - 操作者: {session['user_id']}",
+                       extra={'user_id': session['user_id'], 'operation': '停止自动备份'})
             return jsonify({
                 'success': True,
                 'message': '自动备份已停止'
@@ -2630,7 +2840,8 @@ def api_stop_auto_backup():
                 'message': '停止自动备份失败'
             })
     except Exception as e:
-        logger.error(f"停止自动备份失败: {str(e)}")
+        logger.error(f"停止自动备份失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '停止自动备份'})
         return jsonify({
             'success': False,
             'message': f'停止失败: {str(e)}'
@@ -2645,7 +2856,8 @@ def api_restart_auto_backup():
         success = auto_backup_scheduler.restart()
 
         if success:
-            logger.info(f"手动重启自动备份 - 操作者: {session['user_id']}")
+            logger.info(f"手动重启自动备份 - 操作者: {session['user_id']}",
+                       extra={'user_id': session['user_id'], 'operation': '重启自动备份'})
             return jsonify({
                 'success': True,
                 'message': '自动备份已重启'
@@ -2656,7 +2868,8 @@ def api_restart_auto_backup():
                 'message': '重启自动备份失败'
             })
     except Exception as e:
-        logger.error(f"重启自动备份失败: {str(e)}")
+        logger.error(f"重启自动备份失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '重启自动备份'})
         return jsonify({
             'success': False,
             'message': f'重启失败: {str(e)}'
@@ -2671,11 +2884,13 @@ def api_backup_now():
         result = auto_backup_scheduler.manual_backup_now()
 
         if result['success']:
-            logger.info(f"手动执行立即备份 - 操作者: {session['user_id']}")
+            logger.info(f"手动执行立即备份 - 操作者: {session['user_id']}",
+                       extra={'user_id': session['user_id'], 'operation': '立即执行备份'})
 
         return jsonify(result)
     except Exception as e:
-        logger.error(f"立即备份执行失败: {str(e)}")
+        logger.error(f"立即备份执行失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '立即执行备份'})
         return jsonify({
             'success': False,
             'message': f'立即备份失败: {str(e)}'
@@ -2693,7 +2908,8 @@ def api_auto_backup_settings():
                 'settings': status['settings']
             })
         except Exception as e:
-            logger.error(f"获取自动备份设置失败: {str(e)}")
+            logger.error(f"获取自动备份设置失败: {str(e)}",
+                        extra={'user_id': session.get('user_id', '未登录'), 'operation': '获取自动备份设置'})
             return jsonify({
                 'success': False,
                 'message': f'获取设置失败: {str(e)}'
@@ -2730,7 +2946,8 @@ def api_auto_backup_settings():
             success = auto_backup_scheduler.update_settings(settings)
 
             if success:
-                logger.info(f"更新自动备份设置 - 操作者: {session['user_id']}, 设置: {settings}")
+                logger.info(f"更新自动备份设置 - 操作者: {session['user_id']}, 设置: {settings}",
+                           extra={'user_id': session['user_id'], 'operation': '更新自动备份设置'})
                 return jsonify({
                     'success': True,
                     'message': '设置已更新'
@@ -2741,7 +2958,8 @@ def api_auto_backup_settings():
                     'message': '更新设置失败'
                 })
         except Exception as e:
-            logger.error(f"更新自动备份设置失败: {str(e)}")
+            logger.error(f"更新自动备份设置失败: {str(e)}",
+                        extra={'user_id': session.get('user_id', '未登录'), 'operation': '更新自动备份设置'})
             return jsonify({
                 'success': False,
                 'message': f'更新设置失败: {str(e)}'
@@ -2763,7 +2981,8 @@ def api_auto_backup_history():
             'count': len(history)
         })
     except Exception as e:
-        logger.error(f"获取备份历史失败: {str(e)}")
+        logger.error(f"获取备份历史失败: {str(e)}",
+                    extra={'user_id': session.get('user_id', '未登录'), 'operation': '获取备份历史'})
         return jsonify({
             'success': False,
             'message': f'获取历史失败: {str(e)}'
@@ -2772,13 +2991,17 @@ def api_auto_backup_history():
 # ==================== 应用启动 ====================
 if __name__ == '__main__':
     # 记录应用启动
-    logger.info("=" * 50)
-    logger.info("学生公寓交费管理系统启动")
-    logger.info(f"启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info(f"日志目录: {os.path.abspath('logs')}")
-    logger.info(f"备份目录: {os.path.abspath('backups')}")
-    logger.info(f"数据库配置: {app.config['MYSQL_DB']}@{app.config['MYSQL_HOST']}")
-    logger.info("=" * 50)
+    logger.info("=" * 50, extra={'user_id': '系统', 'operation': '系统启动'})
+    logger.info("学生公寓交费管理系统启动", extra={'user_id': '系统', 'operation': '系统启动'})
+    logger.info(f"启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+               extra={'user_id': '系统', 'operation': '系统启动'})
+    logger.info(f"日志目录: {os.path.abspath('logs')}",
+               extra={'user_id': '系统', 'operation': '系统启动'})
+    logger.info(f"备份目录: {os.path.abspath('backups')}",
+               extra={'user_id': '系统', 'operation': '系统启动'})
+    logger.info(f"数据库配置: {app.config['MYSQL_DB']}@{app.config['MYSQL_HOST']}",
+               extra={'user_id': '系统', 'operation': '系统启动'})
+    logger.info("=" * 50, extra={'user_id': '系统', 'operation': '系统启动'})
 
     # 创建必要的模板文件
     try:
@@ -2787,21 +3010,24 @@ if __name__ == '__main__':
         for template in required_templates:
             template_path = os.path.join('templates', template)
             if not os.path.exists(template_path):
-                logger.warning(f"缺少模板文件: {template}，请确保已创建")
+                logger.warning(f"缺少模板文件: {template}，请确保已创建",
+                             extra={'user_id': '系统', 'operation': '系统初始化'})
     except Exception as e:
-        logger.error(f"检查模板文件失败: {str(e)}")
+        logger.error(f"检查模板文件失败: {str(e)}",
+                    extra={'user_id': '系统', 'operation': '系统初始化'})
 
     # 初始化自动备份
-    logger.info("初始化自动备份功能...")
+    logger.info("初始化自动备份功能...", extra={'user_id': '系统', 'operation': '系统初始化'})
     init_auto_backup()
 
     # 添加优雅关闭处理
     import signal
 
     def shutdown_handler(signum, frame):
-        logger.info("接收到关闭信号，正在停止自动备份调度器...")
+        logger.info("接收到关闭信号，正在停止自动备份调度器...",
+                   extra={'user_id': '系统', 'operation': '系统关闭'})
         auto_backup_scheduler.stop()
-        logger.info("系统正在关闭...")
+        logger.info("系统正在关闭...", extra={'user_id': '系统', 'operation': '系统关闭'})
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown_handler)
