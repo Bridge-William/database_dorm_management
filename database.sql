@@ -6,7 +6,7 @@ USE dorm_management;
 
 -- ==================== 创建表结构 ====================
 
--- 1. 密保问题表（新增）
+-- 1. 密保问题表
 CREATE TABLE security_questions (
     question_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '问题ID',
     question_text VARCHAR(100) NOT NULL COMMENT '问题内容',
@@ -24,7 +24,7 @@ CREATE TABLE buildings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='公寓楼信息表';
 
--- 3. 寝室表 (修改为单一主键，寝室号格式如"A101")
+-- 3. 寝室表
 CREATE TABLE rooms (
     room_id VARCHAR(20) PRIMARY KEY COMMENT '寝室号（格式：楼号+数字，如A101）',
     building_id VARCHAR(20) NOT NULL COMMENT '公寓号',
@@ -90,7 +90,7 @@ CREATE TABLE payments (
     INDEX idx_room (room_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='交费记录表';
 
--- 6. 用户表（添加密保字段）
+-- 6. 用户表
 CREATE TABLE users (
     user_id VARCHAR(20) PRIMARY KEY COMMENT '用户ID(学校身份编号)',
     password VARCHAR(255) NOT NULL COMMENT '密码(加密)',
@@ -100,7 +100,6 @@ CREATE TABLE users (
     email VARCHAR(100) COMMENT '邮箱',
     phone VARCHAR(20) COMMENT '手机号',
     remark VARCHAR(200) COMMENT '备注',
-    -- 新增密保字段
     question_id INT NOT NULL DEFAULT 1 COMMENT '密保问题ID',
     question_answer VARCHAR(255) NOT NULL DEFAULT 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9' COMMENT '密保答案(加密)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -109,7 +108,7 @@ CREATE TABLE users (
     FOREIGN KEY (question_id) REFERENCES security_questions(question_id) ON DELETE SET DEFAULT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
 
--- 7. 用户注册申请表（添加密保字段）
+-- 7. 用户注册申请表
 CREATE TABLE user_requests (
     request_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '申请ID',
     user_id VARCHAR(20) NOT NULL COMMENT '用户ID(学校身份编号)',
@@ -120,7 +119,6 @@ CREATE TABLE user_requests (
     email VARCHAR(100) COMMENT '邮箱',
     phone VARCHAR(20) COMMENT '手机号',
     remark VARCHAR(200) COMMENT '申请备注',
-    -- 新增密保字段
     question_id INT NOT NULL DEFAULT 1 COMMENT '密保问题ID',
     question_answer VARCHAR(255) NOT NULL DEFAULT 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9' COMMENT '密保答案(加密)',
     status ENUM('待审批', '已批准', '已拒绝') DEFAULT '待审批' COMMENT '申请状态',
@@ -205,14 +203,14 @@ INSERT INTO students (student_id, name, gender, ethnicity, major, class, phone, 
 ('2024010', '刘二', '男', '汉族', '物联网工程', '物联2401', '13800138010', 'D栋', 'D101');
 
 -- 插入用户数据 (密码统一为: admin123, 使用SHA256加密)
--- 注意：新增了密保字段，默认使用第一个问题，答案为默认加密值
+-- 注意：密保字段默认使用第一个问题，答案为默认加密值
 INSERT INTO users (user_id, password, realname, permission, job_title, email, phone, question_id, question_answer) VALUES
 ('2023010001', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '系统管理员', '管理员', '工作人员', 'admin@example.com', '13800000001', 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
 ('2023010002', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '张老师', '教师', '教师', 'zhang@example.com', '13800000002', 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
 ('2023010003', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '李老师', '教师', '教师', 'li@example.com', '13800000003', 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
 ('2023010004', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '王老师', '教师', '教师', 'wang@example.com', '13800000004', 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9');
 
--- 插入示例注册申请数据（包含密保字段）
+-- 插入示例注册申请数据
 INSERT INTO user_requests (user_id, password, realname, permission, job_title, email, phone, remark, status, admin_remark, approver_id, approver_name, approved_at, question_id, question_answer) VALUES
 ('2023010005', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '赵老师', '教师', '教师', 'zhao@example.com', '13800000005', '申请教师权限，教授计算机课程', '待审批', NULL, NULL, NULL, NULL, 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
 ('2023010006', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '刘老师', '教师', '教师', 'liu@example.com', '13800000006', '申请教师权限，负责学生管理工作', '已批准', '已批准 - 授予权限: 教师', '2023010001', '系统管理员', '2025-09-01 10:30:00', 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),

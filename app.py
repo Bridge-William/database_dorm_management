@@ -1328,21 +1328,18 @@ def add_room():
     """添加寝室"""
     try:
         building_id = request.form.get('building_id')
-        room_number = request.form.get('room_number')  # 修改：获取数字部分
+        room_id = request.form.get('room_id')  # 直接获取完整的寝室号
         capacity = request.form.get('capacity', type=int)
         fee = request.form.get('fee', type=float)
         phone = request.form.get('phone')
 
-        # 生成新的寝室号格式：building_id + room_number
-        room_id = f"{building_id}{room_number}"
-
         logger.info(
-            f"添加寝室 - 楼号: {building_id}, 寝室号: {room_id}, 数字部分: {room_number}, 容量: {capacity}, 费用: {fee}",
+            f"添加寝室 - 楼号: {building_id}, 寝室号: {room_id}, 容量: {capacity}, 费用: {fee}",
             extra={'user_id': session['user_id'], 'operation': '添加寝室'})
 
         cur = mysql.connection.cursor()
 
-        # 检查寝室号是否重复（新寝室号格式）
+        # 检查寝室号是否重复
         cur.execute("SELECT room_id FROM rooms WHERE room_id = %s", (room_id,))
         if cur.fetchone():
             flash('该寝室号已存在', 'danger')
@@ -1372,68 +1369,112 @@ def add_room():
 @login_required
 @log_operation("编辑寝室")
 def edit_room(room_id):
-    """编辑寝室"""
+    """编辑寝室 - 允许部分字段更新"""
     try:
         building_id = request.form.get('building_id')
-        new_room_number = request.form.get('room_number')  # 新的数字部分
-        capacity = request.form.get('capacity', type=int)
-        fee = request.form.get('fee', type=float)
+        new_room_id = request.form.get('room_id')  # 新的寝室号
+        capacity = request.form.get('capacity')
+        fee = request.form.get('fee')
         phone = request.form.get('phone')
 
-        # 生成新的完整寝室号
-        new_room_id = f"{building_id}{new_room_number}"
-
         logger.info(
-            f"编辑寝室 - 原寝室号: {room_id}, 新寝室号: {new_room_id}, 楼号: {building_id}, 数字部分: {new_room_number}",
+            f"编辑寝室 - 原寝室号: {room_id}, 新寝室号: {new_room_id}",
             extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
 
         cur = mysql.connection.cursor()
 
-        # 如果寝室号改变了，检查是否已存在
-        if new_room_id != room_id:
+        # 获取原始寝室信息
+        cur.execute("SELECT * FROM rooms WHERE room_id = %s", (room_id,))
+        original_room = cur.fetchone()
+
+        if not original_room:
+            flash('寝室不存在', 'danger')
+            cur.close()
+            return redirect(url_for('rooms'))
+
+        # 构建更新字段和值
+        update_fields = []
+        update_values = []
+
+        # 如果提供了新的寝室号且与原值不同
+        if new_room_id and new_room_id != room_id:
+            # 检查新寝室号是否已存在
             cur.execute("SELECT room_id FROM rooms WHERE room_id = %s", (new_room_id,))
             if cur.fetchone():
                 flash('该寝室号已存在', 'danger')
                 cur.close()
                 return redirect(url_for('rooms'))
+            update_fields.append("room_id = %s")
+            update_values.append(new_room_id)
 
-        # 使用事务更新
-        try:
-            cur.execute("START TRANSACTION")
+        # 如果提供了楼栋ID且与原值不同
+        if building_id and building_id != original_room['building_id']:
+            update_fields.append("building_id = %s")
+            update_values.append(building_id)
 
-            # 更新寝室表
-            cur.execute("""
-                UPDATE rooms 
-                SET room_id=%s, building_id=%s, capacity=%s, fee=%s, phone=%s
-                WHERE room_id=%s
-            """, (new_room_id, building_id, capacity, fee, phone, room_id))
+        # 如果提供了容量且与原值不同
+        if capacity:
+            capacity_int = int(capacity)
+            if capacity_int != original_room['capacity']:
+                update_fields.append("capacity = %s")
+                update_values.append(capacity_int)
 
+        # 如果提供了费用且与原值不同
+        if fee:
+            fee_float = float(fee)
+            if fee_float != original_room['fee']:
+                update_fields.append("fee = %s")
+                update_values.append(fee_float)
+
+        # 如果提供了电话（包括空字符串）
+        if phone is not None:
+            if phone != original_room['phone']:
+                update_fields.append("phone = %s")
+                update_values.append(phone if phone else None)
+
+        # 如果没有需要更新的字段，直接返回
+        if not update_fields:
+            flash('没有检测到任何修改', 'info')
+            cur.close()
+            return redirect(url_for('rooms'))
+
+        # 添加WHERE条件
+        update_values.append(room_id)
+
+        # 构建更新SQL
+        update_sql = f"""
+            UPDATE rooms 
+            SET {', '.join(update_fields)}
+            WHERE room_id = %s
+        """
+
+        # 执行更新
+        cur.execute(update_sql, update_values)
+
+        # 如果寝室号改变了，需要更新相关表
+        if new_room_id and new_room_id != room_id:
             # 更新学生表
             cur.execute("""
                 UPDATE students 
-                SET building_id=%s, room_id=%s
-                WHERE room_id=%s
-            """, (building_id, new_room_id, room_id))
+                SET building_id = COALESCE(%s, building_id), 
+                    room_id = %s
+                WHERE room_id = %s
+            """, (building_id or original_room['building_id'], new_room_id, room_id))
 
             # 更新交费记录表
             cur.execute("""
                 UPDATE payments 
-                SET building_id=%s, room_id=%s
-                WHERE room_id=%s
-            """, (building_id, new_room_id, room_id))
+                SET building_id = COALESCE(%s, building_id), 
+                    room_id = %s
+                WHERE room_id = %s
+            """, (building_id or original_room['building_id'], new_room_id, room_id))
 
-            mysql.connection.commit()
-            logger.info(f"编辑寝室成功 - 原寝室号: {room_id}, 新寝室号: {new_room_id}",
-                        extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
-            flash('寝室信息更新成功', 'success')
+        mysql.connection.commit()
+        cur.close()
 
-        except Exception as e:
-            mysql.connection.rollback()
-            logger.error(f"编辑寝室事务失败 - 寝室号: {room_id}, 错误: {str(e)}",
-                         extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
-            flash(f'更新失败: {str(e)}', 'danger')
-        finally:
-            cur.close()
+        logger.info(f"编辑寝室成功 - 原寝室号: {room_id}, 新寝室号: {new_room_id or room_id}",
+                    extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
+        flash('寝室信息更新成功', 'success')
 
     except Exception as e:
         logger.error(f"编辑寝室失败 - 寝室号: {room_id}, 错误: {str(e)}",
@@ -2137,9 +2178,6 @@ def add_user():
         permission = request.form.get('permission')
         email = request.form.get('email', '')
         phone = request.form.get('phone', '')
-        # 新增密保字段
-        question_id = request.form.get('question_id', 1, type=int)
-        question_answer = request.form.get('question_answer', '')
 
         logger.info(f"添加用户 - 用户ID: {user_id}, 真实姓名: {realname}, 职务: {job_title}, 权限: {permission}",
                     extra={'user_id': session['user_id'], 'operation': '添加用户'})
@@ -2155,12 +2193,9 @@ def add_user():
 
         hashed_password = hash_password(password)
 
-        # 处理密保答案：如果提供了答案就加密，否则使用默认值
-        if question_answer:
-            hashed_answer = hash_security_answer(question_answer)
-        else:
-            # 使用默认加密答案
-            hashed_answer = 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'
+        # 使用默认密保问题和答案（用户在个人信息页面可以自己修改）
+        default_question_id = 1
+        default_answer = 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'
 
         cur = mysql.connection.cursor()
 
@@ -2176,7 +2211,7 @@ def add_user():
                               email, phone, question_id, question_answer)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (user_id, hashed_password, realname, permission, job_title,
-              email, phone, question_id, hashed_answer))
+              email, phone, default_question_id, default_answer))
 
         mysql.connection.commit()
         cur.close()

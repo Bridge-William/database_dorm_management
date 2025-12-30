@@ -1,6 +1,9 @@
 <!--
   文件名: templates/rooms.html
   说明: 寝室管理页面 - 完整代码（增加查询功能）
+  修改说明：
+  1. 添加寝室时直接输入完整寝室号，不再自动拼接楼号
+  2. 编辑寝室时允许部分字段更新，未修改的字段保留原值
 -->
 {% extends "base.html" %}
 
@@ -214,7 +217,7 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form method="POST" action="{{ url_for('add_room') }}" onsubmit="return validateRoomForm(this)">
+            <form method="POST" action="{{ url_for('add_room') }}" onsubmit="return validateAddRoomForm(this)">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="addRoomBuilding" class="form-label">所属公寓楼 <span class="text-danger">*</span></label>
@@ -226,10 +229,10 @@
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label for="addRoomNumber" class="form-label">寝室号（数字部分） <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="addRoomNumber" name="room_number"
-                               required maxlength="10" placeholder="例如: 101, 201">
-                        <div class="form-text">纯数字，如101、201等。完整寝室号将自动生成为"楼号+数字"，如A栋101 → A101</div>
+                        <label for="addRoomId" class="form-label">寝室号 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="addRoomId" name="room_id"
+                               required maxlength="20" placeholder="例如: 101, 201, A101, B201">
+                        <div class="form-text">请输入完整的寝室号，如 101、201、A栋101、B栋201 等</div>
                     </div>
                     <div class="mb-3">
                         <label for="addCapacity" class="form-label">可住人数 <span class="text-danger">*</span></label>
@@ -274,35 +277,45 @@
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form method="POST" id="editRoomForm" onsubmit="return validateRoomForm(this)">
+            <form method="POST" id="editRoomForm" onsubmit="return validateEditRoomForm(this)">
                 <div class="modal-body">
-                    <input type="hidden" id="editOriginalRoomId" name="original_room_id">
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>说明：</strong>所有字段留空表示不修改该项。可以只修改需要更改的信息。
+                    </div>
+
+                    <input type="hidden" id="originalRoomId" name="original_room_id">
+
                     <div class="mb-3">
-                        <label for="editRoomBuilding" class="form-label">所属公寓楼 <span class="text-danger">*</span></label>
-                        <select class="form-select" id="editRoomBuilding" name="building_id" required>
+                        <label for="editRoomId" class="form-label">寝室号</label>
+                        <input type="text" class="form-control" id="editRoomId" name="room_id"
+                               placeholder="留空则不修改寝室号">
+                        <div class="form-text">如果修改寝室号，新寝室号不能与其他寝室重复</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editRoomBuilding" class="form-label">所属公寓楼</label>
+                        <select class="form-select" id="editRoomBuilding" name="building_id">
+                            <option value="">请选择（留空则不修改）</option>
                             {% for building in buildings %}
                             <option value="{{ building.building_id }}">{{ building.building_id }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label for="editRoomNumber" class="form-label">寝室号（数字部分） <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="editRoomNumber" name="room_number" required>
-                        <div class="form-text">纯数字，如101、201等</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="editCapacity" class="form-label">可住人数 <span class="text-danger">*</span></label>
+                        <label for="editCapacity" class="form-label">可住人数</label>
                         <input type="number" class="form-control" id="editCapacity" name="capacity"
-                               required min="1" max="20">
+                               min="1" max="20" placeholder="留空则不修改可住人数">
                     </div>
                     <div class="mb-3">
-                        <label for="editFee" class="form-label">住宿费用（元/学期）<span class="text-danger">*</span></label>
+                        <label for="editFee" class="form-label">住宿费用（元/学期）</label>
                         <input type="number" class="form-control" id="editFee" name="fee"
-                               required min="0" step="0.01">
+                               min="0" step="0.01" placeholder="留空则不修改费用">
                     </div>
                     <div class="mb-3">
                         <label for="editPhone" class="form-label">寝室电话</label>
-                        <input type="text" class="form-control" id="editPhone" name="phone" maxlength="20">
+                        <input type="text" class="form-control" id="editPhone" name="phone"
+                               maxlength="20" placeholder="留空则不修改电话，输入空字符串可清空电话">
+                        <div class="form-text">当前电话：<span id="currentPhoneText"></span></div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -322,18 +335,30 @@
 
 {% block extra_js %}
 <script>
+// 存储原始寝室信息
+let originalRoomInfo = {};
+
 // 编辑寝室
 function editRoom(roomId, buildingId, capacity, fee, phone) {
-    // 从完整寝室号中提取数字部分
-    // 例如：A101 → 101
-    let roomNumber = roomId.replace(buildingId, '');
+    // 保存原始信息
+    originalRoomInfo = {
+        room_id: roomId,
+        building_id: buildingId,
+        capacity: capacity,
+        fee: fee,
+        phone: phone || ''
+    };
 
-    document.getElementById('editOriginalRoomId').value = roomId;
-    document.getElementById('editRoomBuilding').value = buildingId;
-    document.getElementById('editRoomNumber').value = roomNumber;
-    document.getElementById('editCapacity').value = capacity;
-    document.getElementById('editFee').value = fee;
-    document.getElementById('editPhone').value = phone || '';
+    // 设置表单值
+    document.getElementById('originalRoomId').value = roomId;
+    document.getElementById('editRoomId').value = '';
+    document.getElementById('editRoomBuilding').value = '';
+    document.getElementById('editCapacity').value = '';
+    document.getElementById('editFee').value = '';
+    document.getElementById('editPhone').value = '';
+    document.getElementById('currentPhoneText').textContent = phone || '未设置';
+
+    // 设置表单action
     document.getElementById('editRoomForm').action = `/rooms/edit/${encodeURIComponent(roomId)}`;
 
     const modal = new bootstrap.Modal(document.getElementById('editRoomModal'));
@@ -359,34 +384,110 @@ function confirmDeleteRoom(roomId, currentOccupancy) {
     }
 }
 
-// 表单验证
-function validateRoomForm(form) {
+// 添加寝室表单验证
+function validateAddRoomForm(form) {
     const buildingId = form.querySelector('[name="building_id"]').value;
-    const roomNumber = form.querySelector('[name="room_number"]').value;
-    const capacity = parseInt(form.querySelector('[name="capacity"]').value);
-    const fee = parseFloat(form.querySelector('[name="fee"]').value);
+    const roomId = form.querySelector('[name="room_id"]').value;
+    const capacity = form.querySelector('[name="capacity"]').value;
+    const fee = form.querySelector('[name="fee"]').value;
 
     if (!buildingId) {
         alert('请选择所属公寓楼');
         return false;
     }
 
-    if (!roomNumber || !/^\d+$/.test(roomNumber)) {
-        alert('寝室号数字部分必须为纯数字');
+    if (!roomId || roomId.trim() === '') {
+        alert('请输入寝室号');
         return false;
     }
 
-    if (capacity < 1 || capacity > 20) {
+    if (!capacity || capacity < 1 || capacity > 20) {
         alert('可住人数必须在 1-20 之间');
         return false;
     }
 
-    if (fee < 0 || fee > 100000) {
+    if (!fee || fee < 0 || fee > 100000) {
         alert('住宿费用必须在 0-100000 之间');
         return false;
     }
 
     return true;
+}
+
+// 编辑寝室表单验证
+function validateEditRoomForm(form) {
+    const newRoomId = form.querySelector('[name="room_id"]').value;
+    const capacity = form.querySelector('[name="capacity"]').value;
+    const fee = form.querySelector('[name="fee"]').value;
+    const phone = form.querySelector('[name="phone"]').value;
+
+    // 检查是否有任何修改
+    let hasChanges = false;
+    let changes = [];
+
+    // 检查寝室号
+    if (newRoomId && newRoomId.trim() !== '') {
+        if (newRoomId !== originalRoomInfo.room_id) {
+            hasChanges = true;
+            changes.push('寝室号');
+        }
+    }
+
+    // 检查楼栋
+    const buildingSelect = form.querySelector('[name="building_id"]');
+    if (buildingSelect.value && buildingSelect.value !== originalRoomInfo.building_id) {
+        hasChanges = true;
+        changes.push('所属楼栋');
+    }
+
+    // 检查容量
+    if (capacity) {
+        const capacityNum = parseInt(capacity);
+        if (capacityNum !== originalRoomInfo.capacity) {
+            hasChanges = true;
+            changes.push('可住人数');
+        }
+
+        // 验证范围
+        if (capacityNum < 1 || capacityNum > 20) {
+            alert('可住人数必须在 1-20 之间');
+            return false;
+        }
+    }
+
+    // 检查费用
+    if (fee) {
+        const feeNum = parseFloat(fee);
+        if (feeNum !== originalRoomInfo.fee) {
+            hasChanges = true;
+            changes.push('住宿费用');
+        }
+
+        // 验证范围
+        if (feeNum < 0 || feeNum > 100000) {
+            alert('住宿费用必须在 0-100000 之间');
+            return false;
+        }
+    }
+
+    // 检查电话（注意：空字符串表示清空电话，所以始终视为有变化）
+    if (phone !== undefined && phone !== originalRoomInfo.phone) {
+        hasChanges = true;
+        changes.push('寝室电话');
+    }
+
+    if (!hasChanges) {
+        return confirm('您没有修改任何信息，确定要提交吗？');
+    }
+
+    // 如果修改了寝室号，检查是否为空
+    if (newRoomId && newRoomId.trim() === '') {
+        alert('如果修改寝室号，新寝室号不能为空');
+        return false;
+    }
+
+    const changesText = changes.length > 0 ? changes.join('、') : '无修改';
+    return confirm(`确定要更新寝室信息吗？\n\n将要修改：${changesText}`);
 }
 </script>
 {% endblock %}

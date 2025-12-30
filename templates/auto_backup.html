@@ -93,7 +93,6 @@
                             <tr>
                                 <th>月份</th>
                                 <th>备份次数</th>
-                                <th>估算大小</th>
                             </tr>
                         </thead>
                         <tbody id="monthlyStatsBody">
@@ -532,7 +531,7 @@ function updateMonthlyStats(monthlyStats) {
     if (!monthlyStats || Object.keys(monthlyStats).length === 0) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="3" class="text-center text-muted">
+                <td colspan="2" class="text-center text-muted">
                     <i class="bi bi-database-x"></i> 暂无统计数据
                 </td>
             </tr>
@@ -541,17 +540,15 @@ function updateMonthlyStats(monthlyStats) {
     }
 
     let html = '';
+    // 按月份排序，最新的在前面
     const months = Object.keys(monthlyStats).sort().reverse();
 
     months.forEach(month => {
         const stat = monthlyStats[month];
-        const sizeMB = (stat.total_size / (1024 * 1024)).toFixed(1);
-
         html += `
             <tr>
                 <td>${month}</td>
                 <td>${stat.count} 次</td>
-                <td>${sizeMB} MB</td>
             </tr>
         `;
     });
@@ -576,7 +573,7 @@ function updateBackupStatsChart(monthlyStats) {
         return;
     }
 
-    // 准备数据
+    // 准备数据 - 按月份排序
     const months = Object.keys(monthlyStats).sort();
     const counts = months.map(month => monthlyStats[month].count);
 
@@ -598,13 +595,23 @@ function updateBackupStatsChart(monthlyStats) {
             plugins: {
                 legend: {
                     display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `备份次数: ${context.parsed.y}`;
+                        }
+                    }
                 }
             },
             scales: {
                 y: {
                     beginAtZero: true,
                     ticks: {
-                        stepSize: 1
+                        stepSize: 1,
+                        callback: function(value) {
+                            return value + ' 次';
+                        }
                     }
                 }
             }

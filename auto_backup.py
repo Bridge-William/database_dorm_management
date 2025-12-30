@@ -346,11 +346,9 @@ class AutoBackupScheduler:
                 if month_key not in monthly_stats:
                     monthly_stats[month_key] = {
                         'count': 0,
-                        'total_size': 0
+                        'month_name': month_key  # 添加月份名称用于显示
                     }
                 monthly_stats[month_key]['count'] += 1
-                # 估计大小（假设每个备份平均大小）
-                monthly_stats[month_key]['total_size'] += 5 * 1024 * 1024  # 假设5MB
 
             # 获取历史记录
             history = self._get_backup_history()
