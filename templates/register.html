@@ -1,6 +1,6 @@
 <!--
   文件名: templates/register.html
-  说明: 用户注册页面
+  说明: 用户注册页面 - 包含密保问题设置
 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -24,9 +24,9 @@
         }
         .register-card {
             width: 100%;
-            max-width: 500px;
+            max-width: 600px;
             max-height: 90vh;
-            padding: 25px;
+            padding: 30px;
             background: white;
             border-radius: 12px;
             box-shadow: 0 8px 30px rgba(0,0,0,.2);
@@ -36,7 +36,7 @@
         }
         .register-title {
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
             color: #667eea;
             font-size: 1.5rem;
         }
@@ -46,6 +46,47 @@
         .alert {
             padding: 10px;
             font-size: 0.9rem;
+        }
+        .form-label {
+            font-weight: 500;
+        }
+        .required::after {
+            content: " *";
+            color: #dc3545;
+        }
+        .step-indicator {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        .step {
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+        .step-number {
+            width: 30px;
+            height: 30px;
+            line-height: 30px;
+            border-radius: 50%;
+            background-color: #e9ecef;
+            color: #6c757d;
+            display: inline-block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .step.active .step-number {
+            background-color: #0d6efd;
+            color: white;
+        }
+        .step-label {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        .step.active .step-label {
+            color: #0d6efd;
+            font-weight: bold;
         }
         /* 添加半透明效果增强可读性 */
         .register-card::before {
@@ -87,6 +128,25 @@
             padding: 10px;
             font-size: 0.95rem;
         }
+        .form-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-left: 4px solid #0d6efd;
+        }
+        .form-section h6 {
+            color: #0d6efd;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        .security-note {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+        }
+        .security-note h6 {
+            color: #856404;
+        }
     </style>
 </head>
 <body>
@@ -95,6 +155,26 @@
             <i class="bi bi-person-plus"></i><br>
             用户注册申请
         </h2>
+
+        <!-- 步骤指示器 -->
+        <div class="step-indicator">
+            <div class="step active">
+                <div class="step-number">1</div>
+                <div class="step-label">基本信息</div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-label">联系信息</div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-label">密保设置</div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-label">提交申请</div>
+            </div>
+        </div>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -108,92 +188,175 @@
         {% endwith %}
 
         <form method="POST" action="{{ url_for('register') }}" onsubmit="return validateRegisterForm(this)">
-            <div class="row g-2">
-                <div class="col-12">
-                    <label class="form-label">用户ID <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" name="user_id" required
-                           pattern="\d{10}"
-                           placeholder="10位数字（四位年份+两位部门+四位顺序号，如：2023040087）">
-                    <div class="form-text">请输入您的学校身份编号</div>
-                </div>
+            <!-- 基本信息部分 -->
+            <div class="form-section">
+                <h6><i class="bi bi-person-badge"></i> 基本信息</h6>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label required">用户ID</label>
+                        <input type="text" class="form-control" name="user_id" required
+                               pattern="\d{10}"
+                               placeholder="10位数字（如：2023040087）">
+                        <div class="form-text">四位年份+两位部门+四位顺序号</div>
+                    </div>
 
-                <div class="col-12">
-                    <label class="form-label">真实姓名 <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" name="realname" required
-                           placeholder="请输入真实姓名">
-                </div>
+                    <div class="col-md-6">
+                        <label class="form-label required">真实姓名</label>
+                        <input type="text" class="form-control" name="realname" required
+                               placeholder="请输入真实姓名">
+                    </div>
 
-                <div class="col-md-6">
-                    <label class="form-label">密码 <span class="text-danger">*</span></label>
-                    <input type="password" class="form-control" id="password" name="password" required
-                           minlength="6" placeholder="至少6位字符">
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">确认密码 <span class="text-danger">*</span></label>
-                    <input type="password" class="form-control" id="password_confirm" name="password_confirm" required
-                           minlength="6" placeholder="再次输入密码">
-                </div>
+                    <div class="col-md-6">
+                        <label class="form-label required">职务</label>
+                        <select class="form-select" name="job_title" required>
+                            <option value="">请选择职务</option>
+                            <option value="教师" selected>教师</option>
+                            <option value="工作人员">工作人员</option>
+                        </select>
+                    </div>
 
-                <div class="col-md-6">
-                    <label class="form-label">职务 <span class="text-danger">*</span></label>
-                    <select class="form-select" name="job_title" required>
-                        <option value="教师" selected>教师</option>
-                        <option value="工作人员">工作人员</option>
-                    </select>
+                    <div class="col-md-6">
+                        <label class="form-label required">申请权限</label>
+                        <select class="form-select" name="permission" required>
+                            <option value="">请选择权限</option>
+                            <option value="教师" selected>教师</option>
+                            <option value="管理员">管理员</option>
+                        </select>
+                        <div class="form-text text-warning">
+                            <i class="bi bi-exclamation-triangle"></i> 管理员权限需特殊理由
+                        </div>
+                    </div>
                 </div>
+            </div>
 
-                <div class="col-md-6">
-                    <label class="form-label">申请权限 <span class="text-danger">*</span></label>
-                    <select class="form-select" name="permission" required>
-                        <option value="教师" selected>教师（建议选择此项）</option>
-                        <option value="管理员">管理员（需特殊理由）</option>
-                    </select>
-                </div>
+            <!-- 联系信息部分 -->
+            <div class="form-section">
+                <h6><i class="bi bi-telephone"></i> 联系信息</h6>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label required">邮箱</label>
+                        <input type="email" class="form-control" name="email" required
+                               placeholder="用于接收通知">
+                    </div>
 
-                <div class="col-md-6">
-                    <label class="form-label">邮箱 <span class="text-danger">*</span></label>
-                    <input type="email" class="form-control" name="email" required
-                           placeholder="用于接收通知">
+                    <div class="col-md-6">
+                        <label class="form-label required">手机号</label>
+                        <input type="tel" class="form-control" name="phone" required
+                               pattern="1[3-9][0-9]{9}"
+                               placeholder="11位手机号">
+                    </div>
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label">手机号 <span class="text-danger">*</span></label>
-                    <input type="tel" class="form-control" name="phone" required
-                           pattern="1[3-9][0-9]{9}"
-                           placeholder="11位手机号">
-                </div>
+            </div>
 
-                <div class="col-12">
-                    <label class="form-label">申请备注</label>
-                    <textarea class="form-control" name="remark" rows="2"
-                              placeholder="选填，可填写申请理由或其他说明信息，便于管理员审核"></textarea>
-                </div>
+            <!-- 密码部分 -->
+            <div class="form-section">
+                <h6><i class="bi bi-lock"></i> 密码设置</h6>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label required">密码</label>
+                        <input type="password" class="form-control" id="password" name="password" required
+                               minlength="6" placeholder="至少6位字符">
+                        <div class="form-text">建议使用字母、数字和特殊字符的组合</div>
+                    </div>
 
-                <div class="col-12">
-                    <div class="alert alert-info mb-2">
-                        <i class="bi bi-info-circle"></i>
-                        <strong>重要提示：</strong><br>
-                        1. 请使用您的学校身份编号（10位数字）作为用户ID<br>
-                        2. 注册申请需要管理员审批<br>
-                        3. 审批结果将通过邮箱或系统通知告知<br>
-                        4. 请确保填写的信息真实有效<br>
-                        5. 如申请被拒绝，您可以修改信息后再次提交申请
+                    <div class="col-md-6">
+                        <label class="form-label required">确认密码</label>
+                        <input type="password" class="form-control" id="password_confirm" name="password_confirm" required
+                               minlength="6" placeholder="再次输入密码">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 密保设置部分 -->
+            <div class="form-section security-note">
+                <h6><i class="bi bi-shield-lock"></i> 密保设置（用于找回密码）</h6>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label required">密保问题</label>
+                        <select class="form-select" name="question_id" required>
+                            <option value="">请选择密保问题</option>
+                            {% for question in questions %}
+                            <option value="{{ question.question_id }}">
+                                {{ question.question_text }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">请选择一个您容易记住的问题</div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label required">密保答案</label>
+                        <input type="text" class="form-control" name="question_answer" required
+                               minlength="2" placeholder="请输入密保答案">
+                        <div class="form-text">请牢记此答案，用于找回密码</div>
                     </div>
                 </div>
 
-                <div class="col-12">
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="bi bi-send"></i> 提交注册申请
-                    </button>
+                <div class="alert alert-info mt-3 mb-0">
+                    <i class="bi bi-lightbulb"></i>
+                    <strong>密保设置建议：</strong><br>
+                    1. 选择答案不会随时间变化的问题<br>
+                    2. 答案建议使用中文或容易记忆的英文<br>
+                    3. 答案至少2个字符，建议4-20个字符<br>
+                    4. 请妥善保管，不要告知他人
                 </div>
+            </div>
 
-                <div class="col-12 text-center mt-3">
-                    <a href="{{ url_for('login') }}" class="text-decoration-none me-3">
-                        <i class="bi bi-arrow-left"></i> 返回登录
-                    </a>
-                    <!-- 新增忘记密码链接 -->
-                    <a href="{{ url_for('forgot_password') }}" class="text-decoration-none">
-                        <i class="bi bi-question-circle"></i> 忘记密码？
-                    </a>
+            <!-- 申请备注部分 -->
+            <div class="form-section">
+                <h6><i class="bi bi-chat-text"></i> 申请备注</h6>
+                <div class="mb-3">
+                    <label class="form-label">申请理由说明</label>
+                    <textarea class="form-control" name="remark" rows="3"
+                              placeholder="选填，可填写申请理由、课程安排、工作职责等信息，便于管理员审核"></textarea>
+                    <div class="form-text">
+                        如果您申请管理员权限，请在此详细说明理由。如申请教师权限，可简要说明教授课程等信息。
+                    </div>
+                </div>
+            </div>
+
+            <!-- 重要提示 -->
+            <div class="alert alert-warning mb-4">
+                <i class="bi bi-exclamation-triangle"></i>
+                <strong>重要提示：</strong><br>
+                1. 请确保填写的信息真实有效<br>
+                2. 密保问题是您找回密码的唯一途径，请务必正确设置<br>
+                3. 注册申请需要管理员审批<br>
+                4. 审批结果将通过邮箱或系统通知告知<br>
+                5. 如申请被拒绝，您可以修改信息后再次提交申请
+            </div>
+
+            <!-- 权限确认提示（如果选择管理员权限） -->
+            <div class="alert alert-danger mb-3 d-none" id="adminPermissionAlert">
+                <i class="bi bi-shield-exclamation"></i>
+                <strong>管理员权限申请确认：</strong><br>
+                您正在申请管理员权限，这需要提供充分的理由并由管理员严格审核。<br>
+                管理员权限可以访问所有功能模块，请谨慎申请。<br>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="confirmAdminPermission">
+                    <label class="form-check-label" for="confirmAdminPermission">
+                        我确认需要管理员权限，并已详细说明申请理由
+                    </label>
+                </div>
+            </div>
+
+            <!-- 提交按钮 -->
+            <div class="d-grid gap-2 mb-3">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-send"></i> 提交注册申请
+                </button>
+            </div>
+
+            <!-- 底部链接 -->
+            <div class="text-center">
+                <a href="{{ url_for('login') }}" class="text-decoration-none me-3">
+                    <i class="bi bi-arrow-left"></i> 返回登录
+                </a>
+                <a href="{{ url_for('forgot_password') }}" class="text-decoration-none">
+                    <i class="bi bi-question-circle"></i> 忘记密码？
+                </a>
+                <div class="mt-2">
+                    <small class="text-muted">注册后需等待管理员审批，审批通过后方可登录</small>
                 </div>
             </div>
         </form>
@@ -201,47 +364,57 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+    // 权限选择变化时显示确认提示
+    document.addEventListener('DOMContentLoaded', function() {
+        const permissionSelect = document.querySelector('select[name="permission"]');
+        const adminAlert = document.getElementById('adminPermissionAlert');
+        const confirmCheckbox = document.getElementById('confirmAdminPermission');
+
+        permissionSelect.addEventListener('change', function() {
+            if (this.value === '管理员') {
+                adminAlert.classList.remove('d-none');
+            } else {
+                adminAlert.classList.add('d-none');
+                confirmCheckbox.checked = false;
+            }
+        });
+    });
+
+    // 表单验证函数
     function validateRegisterForm(form) {
         const user_id = form.querySelector('[name="user_id"]').value;
         const password = document.getElementById('password').value;
         const passwordConfirm = document.getElementById('password_confirm').value;
         const email = form.querySelector('[name="email"]').value;
         const phone = form.querySelector('[name="phone"]').value;
+        const question_id = form.querySelector('[name="question_id"]').value;
+        const question_answer = form.querySelector('[name="question_answer"]').value;
         const permission = form.querySelector('[name="permission"]').value;
+        const confirmCheckbox = document.getElementById('confirmAdminPermission');
 
         // 验证用户ID格式
         if (!/^\d{10}$/.test(user_id)) {
-            alert('用户ID必须是10位数字（四位年份+两位部门+四位顺序号）');
-            return false;
-        }
-
-        // 验证邮箱
-        if (!email) {
-            alert('邮箱不能为空');
+            alert('用户ID必须是10位数字（四位年份+两位部门+四位顺序号）\n\n例如：2023040087');
             return false;
         }
 
         // 验证邮箱格式
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
-            alert('请输入有效的邮箱地址');
+            alert('请输入有效的邮箱地址\n\n例如：user@example.com');
             return false;
         }
 
-        // 验证手机号
-        if (!phone) {
-            alert('手机号不能为空');
-            return false;
-        }
-
-        if (!/^1[3-9]\d{9}$/.test(phone)) {
-            alert('请输入有效的11位手机号');
+        // 验证手机号格式
+        const phoneRegex = /^1[3-9][0-9]{9}$/;
+        if (!phoneRegex.test(phone)) {
+            alert('请输入有效的11位手机号\n\n格式：1开头，11位数字\n例如：13800138000');
             return false;
         }
 
         // 验证密码一致性
         if (password !== passwordConfirm) {
-            alert('两次输入的密码不一致');
+            alert('两次输入的密码不一致，请重新输入');
             return false;
         }
 
@@ -251,13 +424,120 @@
             return false;
         }
 
-        // 如果申请管理员权限，提示确认
-        if (permission === '管理员') {
-            return confirm('您正在申请管理员权限，这需要提供充分的理由并由管理员严格审核。确定要继续吗？');
+        // 密码强度建议
+        if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+            if (!confirm('密码强度较弱，建议使用8位以上包含字母和数字的组合。是否继续？')) {
+                return false;
+            }
         }
 
-        return true;
+        // 验证密保问题
+        if (!question_id) {
+            alert('请选择密保问题');
+            return false;
+        }
+
+        // 验证密保答案
+        if (!question_answer) {
+            alert('密保答案不能为空');
+            return false;
+        }
+
+        // 验证密保答案长度建议
+        if (question_answer.length < 4) {
+            if (!confirm('密保答案较短，建议使用4个以上字符以增强安全性。是否继续？')) {
+                return false;
+            }
+        }
+
+        // 如果申请管理员权限，需要确认
+        if (permission === '管理员') {
+            if (!confirmCheckbox || !confirmCheckbox.checked) {
+                alert('申请管理员权限需要确认并详细说明申请理由');
+                return false;
+            }
+
+            // 额外确认
+            if (!confirm('您确定要申请管理员权限吗？\n\n管理员权限将获得系统的全部访问权限，请谨慎申请。')) {
+                return false;
+            }
+        }
+
+        // 最终确认
+        return confirm('确定要提交注册申请吗？\n\n请仔细检查填写的信息，确保所有信息准确无误。');
     }
+
+    // 实时验证密码强度
+    document.getElementById('password').addEventListener('input', function(e) {
+        const password = e.target.value;
+        const strengthIndicator = document.getElementById('password-strength');
+
+        if (!strengthIndicator) {
+            const div = document.createElement('div');
+            div.id = 'password-strength';
+            div.className = 'mt-2';
+            e.target.parentNode.appendChild(div);
+        }
+
+        let strength = 0;
+        let message = '';
+        let color = 'text-danger';
+
+        if (password.length >= 6) strength++;
+        if (password.length >= 8) strength++;
+        if (/[A-Z]/.test(password)) strength++;
+        if (/[a-z]/.test(password)) strength++;
+        if (/[0-9]/.test(password)) strength++;
+        if (/[^A-Za-z0-9]/.test(password)) strength++;
+
+        if (password.length === 0) {
+            message = '';
+        } else if (strength <= 2) {
+            message = '密码强度：弱';
+            color = 'text-danger';
+        } else if (strength <= 4) {
+            message = '密码强度：中等';
+            color = 'text-warning';
+        } else {
+            message = '密码强度：强';
+            color = 'text-success';
+        }
+
+        document.getElementById('password-strength').innerHTML =
+            `<small class="${color}">${message}</small>`;
+    });
+
+    // 实时验证密保答案长度
+    document.querySelector('[name="question_answer"]').addEventListener('input', function(e) {
+        const answer = e.target.value;
+        const lengthIndicator = document.getElementById('answer-length');
+
+        if (!lengthIndicator) {
+            const div = document.createElement('div');
+            div.id = 'answer-length';
+            div.className = 'mt-2';
+            e.target.parentNode.appendChild(div);
+        }
+
+        let message = '';
+        let color = 'text-success';
+
+        if (answer.length === 0) {
+            message = '';
+<!--        } else if (answer.length < 2) {-->
+<!--            message = '至少需要2个字符';-->
+<!--            color = 'text-danger';-->
+        } else if (answer.length < 4) {
+            message = `${answer.length}个字符（建议4个以上）`;
+            color = 'text-warning';
+        } else {
+            message = `${answer.length}个字符`;
+            color = 'text-success';
+        }
+
+        document.getElementById('answer-length').innerHTML =
+            `<small class="${color}">${message}</small>`;
+    });
     </script>
 </body>
 </html>

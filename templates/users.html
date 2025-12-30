@@ -1,6 +1,6 @@
 <!--
   文件名: templates/users.html
-  说明: 用户管理页面 - 完整代码（优化查询按钮大小）
+  说明: 用户管理页面 - 完整代码（包含密保问题管理，支持部分字段更新）
 -->
 {% extends "base.html" %}
 
@@ -100,11 +100,12 @@
                         <th width="10%">真实姓名</th>
                         <th width="8%">职务</th>
                         <th width="8%">权限</th>
+                        <th width="10%">密保状态</th>
                         <th width="12%">邮箱</th>
                         <th width="10%">手机号</th>
-                        <th width="12%">创建时间</th>
-                        <th width="12%">更新时间</th>
-                        <th width="16%">操作</th>
+                        <th width="10%">创建时间</th>
+                        <th width="10%">更新时间</th>
+                        <th width="10%">操作</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -141,6 +142,17 @@
                             </span>
                         </td>
                         <td>
+                            {% if user.question_answer and user.question_answer != 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9' %}
+                            <span class="badge bg-success">
+                                <i class="bi bi-shield-check"></i> 已设置
+                            </span>
+                            {% else %}
+                            <span class="badge bg-warning">
+                                <i class="bi bi-shield-exclamation"></i> 未设置
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td>
                             <small>{{ user.email or '-' }}</small>
                         </td>
                         <td>
@@ -149,8 +161,7 @@
                         <td>
                             <small class="text-muted">
                                 {% if user.created_at %}
-                                {{ user.created_at.strftime('%Y-%m-%d') }}<br>
-                                <small>{{ user.created_at.strftime('%H:%M:%S') }}</small>
+                                {{ user.created_at.strftime('%Y-%m-%d') }}
                                 {% else %}
                                 -
                                 {% endif %}
@@ -159,8 +170,7 @@
                         <td>
                             <small class="text-muted">
                                 {% if user.updated_at %}
-                                {{ user.updated_at.strftime('%Y-%m-%d') }}<br>
-                                <small>{{ user.updated_at.strftime('%H:%M:%S') }}</small>
+                                {{ user.updated_at.strftime('%Y-%m-%d') }}
                                 {% else %}
                                 -
                                 {% endif %}
@@ -169,7 +179,7 @@
                         <td>
                             <div class="btn-group btn-group-sm" role="group">
                                 <button class="btn btn-outline-primary"
-                                        onclick="editUser('{{ user.user_id }}', '{{ user.realname }}', '{{ user.job_title }}', '{{ user.permission }}', '{{ user.email or "" }}', '{{ user.phone or "" }}')"
+                                        onclick="editUser('{{ user.user_id }}', '{{ user.realname }}', '{{ user.job_title }}', '{{ user.permission }}', '{{ user.email or "" }}', '{{ user.phone or "" }}', '{{ user.question_id or 1 }}')"
                                         title="编辑">
                                     <i class="bi bi-pencil"></i>
                                 </button>
@@ -227,7 +237,7 @@
 
 <!-- 添加用户模态框 -->
 <div class="modal fade" id="addUserModal" tabindex="-1" aria-labelledby="addUserModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title" id="addUserModalLabel">
@@ -237,68 +247,128 @@
             </div>
             <form method="POST" action="{{ url_for('add_user') }}" onsubmit="return validateAddUserForm(this)">
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="addUserId" class="form-label">
-                            用户ID <span class="text-danger">*</span>
-                        </label>
-                        <input type="text" class="form-control" id="addUserId" name="user_id"
-                               required pattern="\d{10}"
-                               placeholder="10位数字（四位年份+两位部门+四位顺序号）">
-                        <div class="form-text">请输入用户的学校身份编号</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="addRealname" class="form-label">
-                            真实姓名 <span class="text-danger">*</span>
-                        </label>
-                        <input type="text" class="form-control" id="addRealname" name="realname"
-                               required maxlength="50" placeholder="请输入真实姓名">
-                    </div>
-                    <div class="mb-3">
-                        <label for="addPassword" class="form-label">
-                            密码 <span class="text-danger">*</span>
-                        </label>
-                        <input type="password" class="form-control" id="addPassword" name="password"
-                               required minlength="6" placeholder="至少6位字符">
-                        <div class="form-text">建议使用字母、数字和特殊字符的组合</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="addPasswordConfirm" class="form-label">
-                            确认密码 <span class="text-danger">*</span>
-                        </label>
-                        <input type="password" class="form-control" id="addPasswordConfirm"
-                               required minlength="6" placeholder="再次输入密码">
-                    </div>
-                    <div class="mb-3">
-                        <label for="addEmail" class="form-label">邮箱</label>
-                        <input type="email" class="form-control" id="addEmail" name="email"
-                               placeholder="请输入邮箱地址">
-                    </div>
-                    <div class="mb-3">
-                        <label for="addPhone" class="form-label">手机号</label>
-                        <input type="tel" class="form-control" id="addPhone" name="phone"
-                               pattern="1[3-9][0-9]{9}" placeholder="请输入11位手机号">
-                        <div class="form-text">格式：1开头，11位数字</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="addJobTitle" class="form-label">
-                            职务 <span class="text-danger">*</span>
-                        </label>
-                        <select class="form-select" id="addJobTitle" name="job_title" required>
-                            <option value="教师" selected>教师</option>
-                            <option value="工作人员">工作人员</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="addPermission" class="form-label">
-                            权限级别 <span class="text-danger">*</span>
-                        </label>
-                        <select class="form-select" id="addPermission" name="permission" required>
-                            <option value="教师" selected>教师</option>
-                            <option value="管理员">管理员</option>
-                        </select>
-                        <div class="form-text text-warning">
-                            <i class="bi bi-exclamation-triangle"></i>
-                            请谨慎分配管理员权限
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="addUserId" class="form-label">
+                                    用户ID <span class="text-danger">*</span>
+                                </label>
+                                <input type="text" class="form-control" id="addUserId" name="user_id"
+                                       required pattern="\d{10}"
+                                       placeholder="10位数字（四位年份+两位部门+四位顺序号）">
+                                <div class="form-text">请输入用户的学校身份编号</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="addRealname" class="form-label">
+                                    真实姓名 <span class="text-danger">*</span>
+                                </label>
+                                <input type="text" class="form-control" id="addRealname" name="realname"
+                                       required maxlength="50" placeholder="请输入真实姓名">
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="addPassword" class="form-label">
+                                    密码 <span class="text-danger">*</span>
+                                </label>
+                                <input type="password" class="form-control" id="addPassword" name="password"
+                                       required minlength="6" placeholder="至少6位字符">
+                                <div class="form-text">建议使用字母、数字和特殊字符的组合</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="addPasswordConfirm" class="form-label">
+                                    确认密码 <span class="text-danger">*</span>
+                                </label>
+                                <input type="password" class="form-control" id="addPasswordConfirm"
+                                       required minlength="6" placeholder="再次输入密码">
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="addEmail" class="form-label">邮箱</label>
+                                <input type="email" class="form-control" id="addEmail" name="email"
+                                       placeholder="请输入邮箱地址">
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="addPhone" class="form-label">手机号</label>
+                                <input type="tel" class="form-control" id="addPhone" name="phone"
+                                       pattern="1[3-9][0-9]{9}" placeholder="请输入11位手机号">
+                                <div class="form-text">格式：1开头，11位数字</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="addJobTitle" class="form-label">
+                                    职务 <span class="text-danger">*</span>
+                                </label>
+                                <select class="form-select" id="addJobTitle" name="job_title" required>
+                                    <option value="">请选择职务</option>
+                                    <option value="教师" selected>教师</option>
+                                    <option value="工作人员">工作人员</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="addPermission" class="form-label">
+                                    权限级别 <span class="text-danger">*</span>
+                                </label>
+                                <select class="form-select" id="addPermission" name="permission" required>
+                                    <option value="">请选择权限</option>
+                                    <option value="教师" selected>教师</option>
+                                    <option value="管理员">管理员</option>
+                                </select>
+                                <div class="form-text text-warning">
+                                    <i class="bi bi-exclamation-triangle"></i>
+                                    请谨慎分配管理员权限
+                                </div>
+                            </div>
+
+                            <!-- 密保设置部分 -->
+                            <div class="card border-warning mb-3">
+                                <div class="card-header bg-warning text-white">
+                                    <h6 class="mb-0"><i class="bi bi-shield-lock"></i> 密保设置（选填）</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="addQuestionId" class="form-label">密保问题</label>
+                                        <select class="form-select" id="addQuestionId" name="question_id">
+                                            <option value="1" selected>您母亲的姓氏是什么？</option>
+                                            <option value="2">您父亲的姓氏是什么？</option>
+                                            <option value="3">您出生城市是哪里？</option>
+                                            <option value="4">您的小学校名是什么？</option>
+                                            <option value="5">您的第一个宠物的名字是什么？</option>
+                                            <option value="6">您最喜爱的老师姓什么？</option>
+                                            <option value="7">您的学号（非用户ID）是多少？</option>
+                                            <option value="8">您的童年昵称是什么？</option>
+                                            <option value="9">您最喜爱的电影是什么？</option>
+                                            <option value="10">您的幸运数字是多少？</option>
+                                        </select>
+                                        <div class="form-text">用于用户找回密码（选填）</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="addQuestionAnswer" class="form-label">密保答案</label>
+                                        <input type="text" class="form-control" id="addQuestionAnswer" name="question_answer"
+                                               placeholder="选填，留空则使用默认答案">
+                                        <div class="form-text">
+                                            <i class="bi bi-info-circle"></i>
+                                            如果不填写答案，系统将使用默认密保答案
+                                        </div>
+                                    </div>
+
+                                    <div class="alert alert-info mb-0">
+                                        <i class="bi bi-lightbulb"></i>
+                                        <strong>提示：</strong>密保问题用于用户找回密码时验证身份。建议为用户设置容易记住的密保答案。
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-secondary">
+                                <i class="bi bi-info-circle"></i>
+                                <strong>说明：</strong>所有字段中只有用户ID、真实姓名、密码、职务和权限是必填项，其他字段均可选填。
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -307,7 +377,7 @@
                         <i class="bi bi-x-circle"></i> 取消
                     </button>
                     <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-check-circle"></i> 添加
+                        <i class="bi bi-check-circle"></i> 添加用户
                     </button>
                 </div>
             </form>
@@ -317,7 +387,7 @@
 
 <!-- 编辑用户模态框 -->
 <div class="modal fade" id="editUserModal" tabindex="-1" aria-labelledby="editUserModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-warning">
                 <h5 class="modal-title" id="editUserModalLabel">
@@ -327,55 +397,122 @@
             </div>
             <form method="POST" id="editUserForm" onsubmit="return validateEditUserForm(this)">
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="editUserId" class="form-label">用户ID</label>
-                        <input type="text" class="form-control" id="editUserId" disabled>
-                        <div class="form-text">用户ID不可修改</div>
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>说明：</strong>所有字段留空表示不修改该项。可以只修改部分信息。
                     </div>
-                    <div class="mb-3">
-                        <label for="editRealname" class="form-label">
-                            真实姓名 <span class="text-danger">*</span>
-                        </label>
-                        <input type="text" class="form-control" id="editRealname" name="realname"
-                               required maxlength="50">
-                    </div>
-                    <div class="mb-3">
-                        <label for="editEmail" class="form-label">邮箱</label>
-                        <input type="email" class="form-control" id="editEmail" name="email">
-                    </div>
-                    <div class="mb-3">
-                        <label for="editPhone" class="form-label">手机号</label>
-                        <input type="tel" class="form-control" id="editPhone" name="phone"
-                               pattern="1[3-9][0-9]{9}">
-                    </div>
-                    <div class="mb-3">
-                        <label for="editJobTitle" class="form-label">
-                            职务 <span class="text-danger">*</span>
-                        </label>
-                        <select class="form-select" id="editJobTitle" name="job_title" required>
-                            <option value="教师">教师</option>
-                            <option value="工作人员">工作人员</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="editPassword" class="form-label">新密码</label>
-                        <input type="password" class="form-control" id="editPassword" name="password"
-                               minlength="6" placeholder="留空则不修改密码">
-                        <div class="form-text">只有需要修改密码时才填写</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="editPasswordConfirm" class="form-label">确认新密码</label>
-                        <input type="password" class="form-control" id="editPasswordConfirm"
-                               minlength="6" placeholder="再次输入新密码">
-                    </div>
-                    <div class="mb-3">
-                        <label for="editPermission" class="form-label">
-                            权限级别 <span class="text-danger">*</span>
-                        </label>
-                        <select class="form-select" id="editPermission" name="permission" required>
-                            <option value="教师">教师</option>
-                            <option value="管理员">管理员</option>
-                        </select>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="editUserId" class="form-label">用户ID</label>
+                                <input type="text" class="form-control" id="editUserId" readonly>
+                                <div class="form-text">用户ID不可修改</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="editRealname" class="form-label">真实姓名</label>
+                                <input type="text" class="form-control" id="editRealname" name="realname"
+                                       maxlength="50" placeholder="留空则不修改">
+                                <div class="form-text">留空则保持原有姓名</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="editEmail" class="form-label">邮箱</label>
+                                <input type="email" class="form-control" id="editEmail" name="email"
+                                       placeholder="留空则不修改">
+                                <div class="form-text">留空则保持原有邮箱</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="editPhone" class="form-label">手机号</label>
+                                <input type="tel" class="form-control" id="editPhone" name="phone"
+                                       pattern="1[3-9][0-9]{9}" placeholder="留空则不修改">
+                                <div class="form-text">留空则保持原有手机号</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="editPassword" class="form-label">新密码</label>
+                                <input type="password" class="form-control" id="editPassword" name="password"
+                                       minlength="6" placeholder="留空则不修改密码">
+                                <div class="form-text">只有需要修改密码时才填写</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="editPasswordConfirm" class="form-label">确认新密码</label>
+                                <input type="password" class="form-control" id="editPasswordConfirm"
+                                       minlength="6" placeholder="留空则不需要">
+                                <div class="form-text">只有修改密码时才需要填写</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="editJobTitle" class="form-label">职务</label>
+                                <select class="form-select" id="editJobTitle" name="job_title">
+                                    <option value="">请选择职务（留空则不修改）</option>
+                                    <option value="教师">教师</option>
+                                    <option value="工作人员">工作人员</option>
+                                </select>
+                                <div class="form-text">留空则保持原有职务</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="editPermission" class="form-label">权限级别</label>
+                                <select class="form-select" id="editPermission" name="permission">
+                                    <option value="">请选择权限（留空则不修改）</option>
+                                    <option value="教师">教师</option>
+                                    <option value="管理员">管理员</option>
+                                </select>
+                                <div class="form-text">留空则保持原有权限</div>
+                            </div>
+
+                            <!-- 密保设置部分 -->
+                            <div class="card border-info mb-3">
+                                <div class="card-header bg-info text-white">
+                                    <h6 class="mb-0"><i class="bi bi-shield-lock"></i> 密保设置（选填）</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="editQuestionId" class="form-label">密保问题</label>
+                                        <select class="form-select" id="editQuestionId" name="question_id">
+                                            <option value="">请选择密保问题（留空则不修改）</option>
+                                            <option value="1">您母亲的姓氏是什么？</option>
+                                            <option value="2">您父亲的姓氏是什么？</option>
+                                            <option value="3">您出生城市是哪里？</option>
+                                            <option value="4">您的小学校名是什么？</option>
+                                            <option value="5">您的第一个宠物的名字是什么？</option>
+                                            <option value="6">您最喜爱的老师姓什么？</option>
+                                            <option value="7">您的学号（非用户ID）是多少？</option>
+                                            <option value="8">您的童年昵称是什么？</option>
+                                            <option value="9">您最喜爱的电影是什么？</option>
+                                            <option value="10">您的幸运数字是多少？</option>
+                                        </select>
+                                        <div class="form-text">用于用户找回密码，留空则不修改</div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="editQuestionAnswer" class="form-label">密保答案</label>
+                                        <input type="text" class="form-control" id="editQuestionAnswer" name="question_answer"
+                                               placeholder="留空则不修改答案">
+                                        <div class="form-text">
+                                            <i class="bi bi-info-circle"></i>
+                                            如果不填写，将保持原有答案不变
+                                        </div>
+                                    </div>
+
+                                    <div class="alert alert-warning mb-0">
+                                        <i class="bi bi-exclamation-triangle"></i>
+                                        <strong>注意：</strong>修改密保问题和答案后，用户需要通过新设置的问题和答案找回密码。
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-secondary">
+                                <i class="bi bi-lightbulb"></i>
+                                <strong>批量修改提示：</strong>如果需要批量修改多个用户的信息，可以多次使用此功能，每次只修改需要更改的字段。
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -395,6 +532,22 @@
 
 {% block extra_js %}
 <script>
+// 存储原始表单值（用于编辑用户）
+let originalEditFormValues = {};
+
+// 编辑用户时保存原始值
+function captureOriginalValues() {
+    originalEditFormValues = {
+        realname: document.getElementById('editRealname').value,
+        email: document.getElementById('editEmail').value,
+        phone: document.getElementById('editPhone').value,
+        job_title: document.getElementById('editJobTitle').value,
+        permission: document.getElementById('editPermission').value,
+        question_id: document.getElementById('editQuestionId').value,
+        question_answer: document.getElementById('editQuestionAnswer').value
+    };
+}
+
 // 验证添加用户表单
 function validateAddUserForm(form) {
     const user_id = form.querySelector('[name="user_id"]').value;
@@ -402,10 +555,18 @@ function validateAddUserForm(form) {
     const confirm = form.querySelector('#addPasswordConfirm').value;
     const email = form.querySelector('#addEmail').value;
     const phone = form.querySelector('#addPhone').value;
+    const job_title = form.querySelector('#addJobTitle').value;
+    const permission = form.querySelector('#addPermission').value;
 
     // 验证用户ID格式
     if (!/^\d{10}$/.test(user_id)) {
         alert('用户ID必须是10位数字（四位年份+两位部门+四位顺序号）');
+        return false;
+    }
+
+    // 验证必填字段
+    if (!user_id || !password || !job_title || !permission) {
+        alert('请填写所有必填字段（用户ID、真实姓名、密码、职务、权限）');
         return false;
     }
 
@@ -440,6 +601,13 @@ function validateAddUserForm(form) {
         }
     }
 
+    // 如果分配管理员权限，提示确认
+    if (permission === '管理员') {
+        if (!confirm('您正在分配管理员权限，这将授予用户完全的系统访问权限。确定要继续吗？')) {
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -449,55 +617,148 @@ function validateEditUserForm(form) {
     const confirm = form.querySelector('#editPasswordConfirm').value;
     const email = form.querySelector('#editEmail').value;
     const phone = form.querySelector('#editPhone').value;
+    const permission = form.querySelector('#editPermission').value;
+    const question_answer = form.querySelector('#editQuestionAnswer').value;
+
+    // 检查是否没有任何修改
+    let hasChanges = false;
+    const currentValues = {
+        realname: document.getElementById('editRealname').value,
+        email: document.getElementById('editEmail').value,
+        phone: document.getElementById('editPhone').value,
+        job_title: document.getElementById('editJobTitle').value,
+        permission: document.getElementById('editPermission').value,
+        question_id: document.getElementById('editQuestionId').value,
+        question_answer: document.getElementById('editQuestionAnswer').value
+    };
+
+    // 比较每个字段
+    if (currentValues.realname !== originalEditFormValues.realname && currentValues.realname !== '') {
+        hasChanges = true;
+    }
+    if (currentValues.email !== originalEditFormValues.email && currentValues.email !== '') {
+        hasChanges = true;
+    }
+    if (currentValues.phone !== originalEditFormValues.phone && currentValues.phone !== '') {
+        hasChanges = true;
+    }
+    if (currentValues.job_title !== originalEditFormValues.job_title && currentValues.job_title !== '') {
+        hasChanges = true;
+    }
+    if (currentValues.permission !== originalEditFormValues.permission && currentValues.permission !== '') {
+        hasChanges = true;
+    }
+    if (currentValues.question_id !== originalEditFormValues.question_id && currentValues.question_id !== '') {
+        hasChanges = true;
+    }
+    if (currentValues.question_answer !== originalEditFormValues.question_answer && currentValues.question_answer !== '') {
+        hasChanges = true;
+    }
+    if (password && password !== '') {
+        hasChanges = true;
+    }
+
+    if (!hasChanges) {
+        return confirm('您没有修改任何信息，确定要提交吗？');
+    }
 
     // 如果填写了新密码
     if (password || confirm) {
-        // 验证密码长度
-        if (password.length < 6) {
-            alert('密码长度至少6位');
+        // 如果只填写了一个密码字段
+        if ((password && !confirm) || (!password && confirm)) {
+            alert('请同时填写新密码和确认密码，或者都不填写');
             return false;
         }
 
-        // 验证密码一致性
-        if (password !== confirm) {
-            alert('两次输入的密码不一致，请重新输入');
-            return false;
-        }
-
-        // 密码强度提示
-        if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-            if (!confirm('密码强度较弱，建议使用8位以上包含字母和数字的组合。是否继续？')) {
+        if (password) {
+            // 验证密码长度
+            if (password.length < 6) {
+                alert('新密码长度至少6位');
                 return false;
+            }
+
+            // 验证密码一致性
+            if (password !== confirm) {
+                alert('两次输入的密码不一致，请重新输入');
+                return false;
+            }
+
+            // 密码强度提示
+            if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+                if (!confirm('密码强度较弱，建议使用8位以上包含字母和数字的组合。是否继续？')) {
+                    return false;
+                }
             }
         }
     }
 
     // 验证邮箱格式（如果填写了邮箱）
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (email && email !== originalEditFormValues.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         alert('请输入有效的邮箱地址');
         return false;
     }
 
     // 验证手机号格式（如果填写了手机号）
-    if (phone && !/^1[3-9][0-9]{9}$/.test(phone)) {
+    if (phone && phone !== originalEditFormValues.phone && !/^1[3-9][0-9]{9}$/.test(phone)) {
         alert('请输入正确的手机号码（11位）');
         return false;
     }
 
-    return true;
+    // 如果分配管理员权限，提示确认
+    if (permission === '管理员' && permission !== originalEditFormValues.permission) {
+        if (!confirm('您正在分配管理员权限，这将授予用户完全的系统访问权限。确定要继续吗？')) {
+            return false;
+        }
+    }
+
+    // 显示将要修改的项目
+    let changes = [];
+    if (currentValues.realname !== originalEditFormValues.realname && currentValues.realname !== '') {
+        changes.push('真实姓名');
+    }
+    if (currentValues.email !== originalEditFormValues.email && currentValues.email !== '') {
+        changes.push('邮箱');
+    }
+    if (currentValues.phone !== originalEditFormValues.phone && currentValues.phone !== '') {
+        changes.push('手机号');
+    }
+    if (currentValues.job_title !== originalEditFormValues.job_title && currentValues.job_title !== '') {
+        changes.push('职务');
+    }
+    if (currentValues.permission !== originalEditFormValues.permission && currentValues.permission !== '') {
+        changes.push('权限');
+    }
+    if (currentValues.question_id !== originalEditFormValues.question_id && currentValues.question_id !== '') {
+        changes.push('密保问题');
+    }
+    if (currentValues.question_answer !== originalEditFormValues.question_answer && currentValues.question_answer !== '') {
+        changes.push('密保答案');
+    }
+    if (password && password !== '') {
+        changes.push('密码');
+    }
+
+    const changesText = changes.length > 0 ? changes.join('、') : '无修改';
+    return confirm(`确定要更新用户信息吗？\n\n将要修改：${changesText}`);
 }
 
 // 编辑用户
-function editUser(id, realname, job_title, permission, email, phone) {
+function editUser(id, realname, job_title, permission, email, phone, question_id) {
+    // 设置表单值
     document.getElementById('editUserId').value = id;
-    document.getElementById('editRealname').value = realname;
-    document.getElementById('editJobTitle').value = job_title;
-    document.getElementById('editPermission').value = permission;
+    document.getElementById('editRealname').value = realname || '';
+    document.getElementById('editJobTitle').value = job_title || '';
+    document.getElementById('editPermission').value = permission || '';
     document.getElementById('editEmail').value = email || '';
     document.getElementById('editPhone').value = phone || '';
     document.getElementById('editPassword').value = '';
     document.getElementById('editPasswordConfirm').value = '';
+    document.getElementById('editQuestionId').value = question_id || '';
+    document.getElementById('editQuestionAnswer').value = '';
     document.getElementById('editUserForm').action = `/users/edit/${id}`;
+
+    // 保存原始值
+    captureOriginalValues();
 
     const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
     modal.show();
@@ -508,7 +769,7 @@ function confirmDeleteUser(id, realname) {
     const message = `确定要删除以下用户吗？\n\n` +
                    `用户ID: ${id}\n` +
                    `姓名: ${realname}\n\n` +
-                   `⚠️ 警告：此操作不可恢复！`;
+                   `⚠️ 警告：此操作不可恢复！将删除该用户的所有数据和记录。`;
 
     if (confirm(message)) {
         // 二次确认

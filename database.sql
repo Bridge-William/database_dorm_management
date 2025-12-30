@@ -1,10 +1,20 @@
-DROP DATABASE IF EXISTS dorm_management;
--- 学生公寓交费管理系统数据库脚本
+-- 学生公寓交费管理系统数据库脚本 - 包含密保问题功能
 -- 创建数据库
+DROP DATABASE IF EXISTS dorm_management;
 CREATE DATABASE IF NOT EXISTS dorm_management DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE dorm_management;
 
--- 1. 公寓楼表
+-- ==================== 创建表结构 ====================
+
+-- 1. 密保问题表（新增）
+CREATE TABLE security_questions (
+    question_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '问题ID',
+    question_text VARCHAR(100) NOT NULL COMMENT '问题内容',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_question_id (question_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='密保问题表';
+
+-- 2. 公寓楼表
 CREATE TABLE buildings (
     building_id VARCHAR(20) PRIMARY KEY COMMENT '公寓楼号',
     floors INT NOT NULL COMMENT '楼层数',
@@ -14,7 +24,7 @@ CREATE TABLE buildings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='公寓楼信息表';
 
--- 2. 寝室表 (修改主键为复合主键)
+-- 3. 寝室表 (修改主键为复合主键)
 CREATE TABLE rooms (
     building_id VARCHAR(20) NOT NULL COMMENT '公寓号',
     room_id VARCHAR(10) NOT NULL COMMENT '寝室号（纯数字，如101）',
@@ -30,7 +40,7 @@ CREATE TABLE rooms (
     INDEX idx_building_room (building_id, room_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='寝室信息表';
 
--- 3. 学生表
+-- 4. 学生表
 CREATE TABLE students (
     student_id VARCHAR(20) PRIMARY KEY COMMENT '学号',
     name VARCHAR(50) NOT NULL COMMENT '姓名',
@@ -55,7 +65,7 @@ CREATE TABLE students (
     INDEX idx_building_room (building_id, room_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生信息表';
 
--- 4. 交费表
+-- 5. 交费表
 CREATE TABLE payments (
     payment_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '交费编号',
     building_id VARCHAR(20) NOT NULL COMMENT '公寓号',
@@ -80,7 +90,7 @@ CREATE TABLE payments (
     INDEX idx_building_room (building_id, room_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='交费记录表';
 
--- 5. 用户表
+-- 6. 用户表（添加密保字段）
 CREATE TABLE users (
     user_id VARCHAR(20) PRIMARY KEY COMMENT '用户ID(学校身份编号)',
     password VARCHAR(255) NOT NULL COMMENT '密码(加密)',
@@ -90,12 +100,16 @@ CREATE TABLE users (
     email VARCHAR(100) COMMENT '邮箱',
     phone VARCHAR(20) COMMENT '手机号',
     remark VARCHAR(200) COMMENT '备注',
+    -- 新增密保字段
+    question_id INT NOT NULL DEFAULT 1 COMMENT '密保问题ID',
+    question_answer VARCHAR(255) NOT NULL DEFAULT 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9' COMMENT '密保答案(加密)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_user_id (user_id)
+    INDEX idx_user_id (user_id),
+    FOREIGN KEY (question_id) REFERENCES security_questions(question_id) ON DELETE SET DEFAULT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
 
--- 6. 用户注册申请表
+-- 7. 用户注册申请表（添加密保字段）
 CREATE TABLE user_requests (
     request_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '申请ID',
     user_id VARCHAR(20) NOT NULL COMMENT '用户ID(学校身份编号)',
@@ -106,9 +120,11 @@ CREATE TABLE user_requests (
     email VARCHAR(100) COMMENT '邮箱',
     phone VARCHAR(20) COMMENT '手机号',
     remark VARCHAR(200) COMMENT '申请备注',
+    -- 新增密保字段
+    question_id INT NOT NULL DEFAULT 1 COMMENT '密保问题ID',
+    question_answer VARCHAR(255) NOT NULL DEFAULT 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9' COMMENT '密保答案(加密)',
     status ENUM('待审批', '已批准', '已拒绝') DEFAULT '待审批' COMMENT '申请状态',
     admin_remark VARCHAR(200) COMMENT '管理员备注/拒绝原因',
-    -- 新增审批人信息字段
     approver_id VARCHAR(20) COMMENT '审批人ID',
     approver_name VARCHAR(50) COMMENT '审批人姓名',
     approved_at TIMESTAMP NULL DEFAULT NULL COMMENT '审批时间',
@@ -118,10 +134,11 @@ CREATE TABLE user_requests (
     INDEX idx_status (status),
     INDEX idx_created (created_at),
     INDEX idx_approver (approver_id),
-    FOREIGN KEY (approver_id) REFERENCES users(user_id) ON DELETE SET NULL
+    FOREIGN KEY (approver_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    FOREIGN KEY (question_id) REFERENCES security_questions(question_id) ON DELETE SET DEFAULT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户注册申请表';
 
--- 7. 通知公告表
+-- 8. 通知公告表
 CREATE TABLE announcements (
     announcement_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '通知ID',
     title VARCHAR(100) NOT NULL COMMENT '通知标题',
@@ -138,8 +155,21 @@ CREATE TABLE announcements (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='通知公告表';
 
 -- ================================
--- 插入示例数据
+-- 插入初始数据
 -- ================================
+
+-- 插入密保问题数据
+INSERT INTO security_questions (question_id, question_text) VALUES
+(1, '您母亲的姓氏是什么？'),
+(2, '您父亲的姓氏是什么？'),
+(3, '您出生城市是哪里？'),
+(4, '您的小学校名是什么？'),
+(5, '您的第一个宠物的名字是什么？'),
+(6, '您最喜爱的老师姓什么？'),
+(7, '您的学号（非用户ID）是多少？'),
+(8, '您的童年昵称是什么？'),
+(9, '您最喜爱的电影是什么？'),
+(10, '您的幸运数字是多少？');
 
 -- 插入公寓楼数据
 INSERT INTO buildings (building_id, floors, rooms_count, commission_date) VALUES
@@ -174,6 +204,22 @@ INSERT INTO students (student_id, name, gender, ethnicity, major, class, phone, 
 ('2024009', '郑一', '男', '汉族', '物联网工程', '物联2401', '13800138009', 'D栋', '101'),
 ('2024010', '刘二', '男', '汉族', '物联网工程', '物联2401', '13800138010', 'D栋', '101');
 
+-- 插入用户数据 (密码统一为: admin123, 使用SHA256加密)
+-- 注意：新增了密保字段，默认使用第一个问题，答案为默认加密值
+INSERT INTO users (user_id, password, realname, permission, job_title, email, phone, question_id, question_answer) VALUES
+('2023010001', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '系统管理员', '管理员', '工作人员', 'admin@example.com', '13800000001', 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
+('2023010002', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '张老师', '教师', '教师', 'zhang@example.com', '13800000002', 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
+('2023010003', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '李老师', '教师', '教师', 'li@example.com', '13800000003', 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
+('2023010004', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '王老师', '教师', '教师', 'wang@example.com', '13800000004', 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9');
+
+-- 插入示例注册申请数据（包含密保字段）
+INSERT INTO user_requests (user_id, password, realname, permission, job_title, email, phone, remark, status, admin_remark, approver_id, approver_name, approved_at, question_id, question_answer) VALUES
+('2023010005', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '赵老师', '教师', '教师', 'zhao@example.com', '13800000005', '申请教师权限，教授计算机课程', '待审批', NULL, NULL, NULL, NULL, 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
+('2023010006', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '刘老师', '教师', '教师', 'liu@example.com', '13800000006', '申请教师权限，负责学生管理工作', '已批准', '已批准 - 授予权限: 教师', '2023010001', '系统管理员', '2025-09-01 10:30:00', 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
+('2023010007', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '孙老师', '教师', '教师', 'sun@example.com', '13800000007', '申请教师权限，新入职教师', '待审批', NULL, NULL, NULL, NULL, 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
+('2023010008', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '陈管理员', '管理员', '工作人员', 'chen@example.com', '13800000008', '申请管理员权限，负责系统维护', '已拒绝', '管理员权限申请需要更多理由', '2023010001', '系统管理员', '2025-09-02 14:15:00', 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'),
+('2023010009', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '吴工作人员', '教师', '工作人员', 'wu@example.com', '13800000009', '申请工作人员权限，负责公寓日常管理', '待审批', NULL, NULL, NULL, NULL, 1, 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9');
+
 -- 插入交费记录
 INSERT INTO payments (building_id, room_id, payment_date, payment_type, amount, student_id, remark) VALUES
 ('A栋', '101', '2025-09-01', '住宿费', 1200.00, '2024001', '2025-2026学年第一学期'),
@@ -187,22 +233,6 @@ INSERT INTO payments (building_id, room_id, payment_date, payment_type, amount, 
 ('C栋', '101', '2025-09-10', '住宿费', 1000.00, '2024007', '2025-2026学年第一学期'),
 ('D栋', '101', '2025-09-10', '住宿费', 1000.00, '2024009', '2025-2026学年第一学期');
 
--- 插入用户数据 (密码统一为: admin123, 使用SHA256加密)
--- 注意：user_id现在使用学校身份编号格式（10位数字）
-INSERT INTO users (user_id, password, realname, permission, job_title, email, phone) VALUES
-('2023010001', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '系统管理员', '管理员', '工作人员', 'admin@example.com', '13800000001'),
-('2023010002', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '张老师', '教师', '教师', 'zhang@example.com', '13800000002'),
-('2023010003', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '李老师', '教师', '教师', 'li@example.com', '13800000003'),
-('2023010004', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '王老师', '教师', '教师', 'wang@example.com', '13800000004');
-
--- 插入示例注册申请数据
-INSERT INTO user_requests (user_id, password, realname, permission, job_title, email, phone, remark, status, admin_remark, approver_id, approver_name, approved_at) VALUES
-('2023010005', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '赵老师', '教师', '教师', 'zhao@example.com', '13800000005', '申请教师权限，教授计算机课程', '待审批', NULL, NULL, NULL, NULL),
-('2023010006', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '刘老师', '教师', '教师', 'liu@example.com', '13800000006', '申请教师权限，负责学生管理工作', '已批准', '已批准 - 授予权限: 教师', '2023010001', '系统管理员', '2025-09-01 10:30:00'),
-('2023010007', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '孙老师', '教师', '教师', 'sun@example.com', '13800000007', '申请教师权限，新入职教师', '待审批', NULL, NULL, NULL, NULL),
-('2023010008', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '陈管理员', '管理员', '工作人员', 'chen@example.com', '13800000008', '申请管理员权限，负责系统维护', '已拒绝', '管理员权限申请需要更多理由', '2023010001', '系统管理员', '2025-09-02 14:15:00'),
-('2023010009', 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', '吴工作人员', '教师', '工作人员', 'wu@example.com', '13800000009', '申请工作人员权限，负责公寓日常管理', '待审批', NULL, NULL, NULL, NULL);
-
 -- 插入示例通知数据
 INSERT INTO announcements (title, content, publisher_id, publisher_name, permission, created_at) VALUES
 ('新学期住宿费缴纳通知', '各位老师请注意：新学期住宿费缴纳已经开始，请通知各位同学于9月10日前完成缴费，逾期将产生滞纳金。', '2023010001', '系统管理员', '全部', '2025-09-01 09:00:00'),
@@ -212,6 +242,10 @@ INSERT INTO announcements (title, content, publisher_id, publisher_name, permiss
 ('节假日宿舍安全提醒', '中秋、国庆假期将至，请提醒各位同学离校前关闭水电、锁好门窗，注意宿舍安全。', '2023010002', '张老师', '全部', '2025-09-04 11:00:00'),
 ('寝室卫生评比通知', '本月寝室卫生评比将于9月20日开始，请各寝室做好清洁工作。', '2023010003', '李老师', '全部', '2025-09-05 09:30:00'),
 ('关于系统升级的通知', '本系统将于本周六凌晨0:00-2:00进行维护升级，期间系统将暂停服务，请提前做好安排。', '2023010001', '系统管理员', '全部', '2025-09-06 15:00:00');
+
+-- ================================
+-- 创建视图
+-- ================================
 
 -- 创建视图：学生交费统计
 CREATE VIEW student_payment_summary AS
@@ -241,10 +275,15 @@ FROM rooms r
 LEFT JOIN students s ON r.building_id = s.building_id AND r.room_id = s.room_id
 GROUP BY r.building_id, r.room_id, r.capacity, r.fee;
 
+-- ================================
+-- 显示数据库信息
+-- ================================
+
 -- 显示所有表
 SHOW TABLES;
 
 -- 显示表结构
+DESC security_questions;
 DESC buildings;
 DESC rooms;
 DESC students;
@@ -254,7 +293,9 @@ DESC user_requests;
 DESC announcements;
 
 -- 显示示例数据数量
-SELECT '公寓楼数量: ' as label, COUNT(*) as count FROM buildings
+SELECT '密保问题数量: ' as label, COUNT(*) as count FROM security_questions
+UNION ALL
+SELECT '公寓楼数量: ', COUNT(*) FROM buildings
 UNION ALL
 SELECT '寝室数量: ', COUNT(*) FROM rooms
 UNION ALL
@@ -271,23 +312,46 @@ SELECT '通知公告数量: ', COUNT(*) FROM announcements;
 -- 显示用户职务统计
 SELECT '用户职务统计: ' as note;
 SELECT job_title, COUNT(*) as count
-FROM users 
+FROM users
 GROUP BY job_title;
 
 -- 显示注册申请状态统计
-SELECT 
+SELECT
     status,
     COUNT(*) as count,
     GROUP_CONCAT(DISTINCT user_id ORDER BY user_id) as user_ids
-FROM user_requests 
+FROM user_requests
 GROUP BY status;
 
 -- 显示公告权限统计
-SELECT 
+SELECT
     permission,
     COUNT(*) as count
-FROM announcements 
+FROM announcements
 GROUP BY permission;
 
+-- 显示密保问题列表
+SELECT
+    question_id,
+    question_text,
+    created_at
+FROM security_questions
+ORDER BY question_id;
+
+-- 显示用户密保设置情况
+SELECT
+    u.user_id,
+    u.realname,
+    q.question_text,
+    CASE
+        WHEN u.question_answer = 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9' THEN '默认（未设置）'
+        ELSE '已设置'
+    END as answer_status
+FROM users u
+LEFT JOIN security_questions q ON u.question_id = q.question_id
+ORDER BY u.user_id;
+
 -- 数据库创建完成
-SELECT '数据库创建成功！' as message;
+SELECT '数据库创建成功！包含密保问题功能。' as message;
+SELECT '默认管理员账号: 2023010001 / admin123' as login_info;
+SELECT '请运行应用后，立即登录并修改密保问题和答案。' as security_tip;

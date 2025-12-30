@@ -1,6 +1,6 @@
 <!--
   文件名: templates/my_info.html
-  说明: 我的信息页面 - 查看和修改个人信息
+  说明: 我的信息页面 - 查看和修改个人信息（支持部分字段更新）
 -->
 {% extends "base.html" %}
 
@@ -15,7 +15,7 @@
 </div>
 
 <div class="row">
-    <div class="col-md-6">
+    <div class="col-md-5">
         <!-- 基本信息卡片 -->
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-primary text-white">
@@ -98,9 +98,46 @@
                 </div>
             </div>
         </div>
+
+        <!-- 密保信息卡片 -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-shield-lock"></i> 当前密保信息</h5>
+            </div>
+            <div class="card-body">
+                {% if question_text %}
+                <div class="mb-3">
+                    <strong>密保问题:</strong>
+                    <div class="alert alert-light mt-2">
+                        <i class="bi bi-question-circle"></i> {{ question_text }}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <strong>状态:</strong>
+                    {% if user.question_answer and user.question_answer != 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9' %}
+                    <span class="badge bg-success">已设置有效密保</span>
+                    {% else %}
+                    <span class="badge bg-warning">未设置有效密保</span>
+                    {% endif %}
+                </div>
+                <div class="alert alert-warning">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>密保功能说明：</strong><br>
+                    密保问题用于找回密码时验证您的身份<br>
+                    请确保问题答案准确且容易记住<br>
+                    如需修改，请在右侧表单中更新
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-3">
+                    <i class="bi bi-shield-exclamation" style="font-size: 2rem;"></i>
+                    <p class="mt-2">未设置密保问题</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
     </div>
 
-    <div class="col-md-6">
+    <div class="col-md-7">
         <!-- 修改个人信息卡片 -->
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-warning">
@@ -108,24 +145,72 @@
             </div>
             <div class="card-body">
                 <form method="POST" action="{{ url_for('update_my_info') }}" onsubmit="return validateInfoForm(this)">
+
+                    <!-- 联系信息部分 -->
+                    <h6 class="border-bottom pb-2 mb-3">
+                        <i class="bi bi-telephone"></i> 联系信息（留空则不修改）
+                    </h6>
+
                     <div class="mb-3">
                         <label for="email" class="form-label">邮箱</label>
                         <input type="email" class="form-control" id="email" name="email"
-                               value="{{ user.email or '' }}" placeholder="请输入邮箱地址">
+                               value="{{ user.email or '' }}" placeholder="留空则不修改邮箱">
+                        <div class="form-text">当前邮箱：{{ user.email or '未设置' }}</div>
                     </div>
 
                     <div class="mb-3">
                         <label for="phone" class="form-label">手机号</label>
                         <input type="tel" class="form-control" id="phone" name="phone"
-                               value="{{ user.phone or '' }}" placeholder="请输入手机号">
+                               value="{{ user.phone or '' }}"
+                               pattern="1[3-9][0-9]{9}" placeholder="留空则不修改手机号">
+                        <div class="form-text">当前手机号：{{ user.phone or '未设置' }}</div>
                     </div>
 
-                    <hr class="my-4">
+                    <!-- 密保设置部分 -->
+                    <h6 class="border-bottom pb-2 mb-3 mt-4">
+                        <i class="bi bi-shield-check"></i> 密保设置（留空则不修改）
+                    </h6>
 
-                    <div class="alert alert-warning mb-3">
-                        <i class="bi bi-exclamation-triangle"></i>
-                        <strong>密码修改提示：</strong>如需修改密码，请填写以下信息；否则请留空。
+                    <div class="mb-3">
+                        <label for="question_id" class="form-label">密保问题</label>
+                        <select class="form-select" id="question_id" name="question_id">
+                            <option value="">请选择密保问题（留空则不修改）</option>
+                            {% for q in questions %}
+                            <option value="{{ q.question_id }}"
+                                    {% if user.question_id == q.question_id %}selected{% endif %}>
+                                {{ q.question_text }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">当前问题：{{ question_text or '未设置' }}</div>
                     </div>
+
+                    <div class="mb-4">
+                        <label for="question_answer" class="form-label">密保答案</label>
+                        <input type="text" class="form-control" id="question_answer" name="question_answer"
+                               placeholder="留空则不修改密保答案">
+                        <div class="form-text">
+                            {% if user.question_answer and user.question_answer != 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9' %}
+                            <span class="text-success">已设置密保答案</span> - 留空则保持现有答案
+                            {% else %}
+                            <span class="text-warning">未设置有效密保答案</span> - 如需设置请填写
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-lightbulb"></i>
+                        <strong>密保设置建议：</strong><br>
+                        1. 选择答案不会随时间变化的问题<br>
+                        2. 答案建议使用中文或容易记忆的英文<br>
+                        3. 留空表示不修改该项<br>
+                        4. 请妥善保管，不要告知他人
+                    </div>
+
+                    <!-- 密码修改部分 -->
+                    <h6 class="border-bottom pb-2 mb-3 mt-4">
+                        <i class="bi bi-key"></i> 修改密码（留空则不修改密码）
+                    </h6>
 
                     {% if session.permission == '教师' %}
                     <div class="mb-3">
@@ -144,29 +229,54 @@
                     <div class="mb-3">
                         <label for="newPassword" class="form-label">新密码</label>
                         <input type="password" class="form-control" id="newPassword" name="new_password"
-                               minlength="6" placeholder="至少6位字符，留空则不修改">
+                               minlength="6" placeholder="至少6位字符，留空则不修改密码">
                         <div class="form-text">建议使用字母、数字和特殊字符的组合</div>
                     </div>
 
                     <div class="mb-3">
                         <label for="confirmPassword" class="form-label">确认新密码</label>
                         <input type="password" class="form-control" id="confirmPassword" name="password_confirm"
-                               minlength="6" placeholder="再次输入新密码">
+                               minlength="6" placeholder="再次输入新密码（留空则不需要）">
                     </div>
 
-                    <div class="alert alert-info">
+                    <div class="alert alert-info mb-4">
                         <i class="bi bi-shield-check"></i>
-                        <strong>安全提示：</strong><br>
-                        1. 请定期更换密码<br>
-                        2. 不要使用简单密码（如123456）<br>
-                        3. 建议密码长度至少8位，包含字母和数字<br>
-                        4. 确保联系信息准确，以便接收系统通知
+                        <strong>使用说明：</strong><br>
+                        1. 可以只修改部分信息，其他项目留空即可<br>
+                        2. 密码和密保答案修改是独立的，可以只修改其中一项<br>
+                        3. 确保联系信息准确，以便接收系统通知
                     </div>
 
-                    <button type="submit" class="btn btn-warning w-100">
-                        <i class="bi bi-check-circle"></i> 更新信息
-                    </button>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-warning">
+                            <i class="bi bi-check-circle"></i> 保存修改
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="resetForm()">
+                            <i class="bi bi-arrow-clockwise"></i> 重置表单
+                        </button>
+                    </div>
                 </form>
+            </div>
+        </div>
+
+        <!-- 修改说明 -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-light">
+                <h6 class="mb-0"><i class="bi bi-question-circle"></i> 修改说明</h6>
+            </div>
+            <div class="card-body">
+                <p><strong>您可以独立修改以下信息：</strong></p>
+                <ul class="mb-3">
+                    <li><strong>邮箱</strong>：留空则不修改，填写新邮箱则更新</li>
+                    <li><strong>手机号</strong>：留空则不修改，填写新手机号则更新</li>
+                    <li><strong>密保问题</strong>：不选择则不修改，选择新问题则更新</li>
+                    <li><strong>密保答案</strong>：留空则不修改，填写新答案则更新</li>
+                    <li><strong>密码</strong>：留空则不修改，填写新密码则更新</li>
+                </ul>
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle"></i>
+                    <strong>提示：</strong>系统只会更新您实际修改的字段，其他字段将保持原值不变。
+                </div>
             </div>
         </div>
     </div>
@@ -175,27 +285,89 @@
 
 {% block extra_js %}
 <script>
+// 存储原始表单值
+let originalFormValues = {};
+
+document.addEventListener('DOMContentLoaded', function() {
+    // 保存原始值
+    originalFormValues = {
+        email: document.getElementById('email').value,
+        phone: document.getElementById('phone').value,
+        question_id: document.getElementById('question_id').value,
+        question_answer: document.getElementById('question_answer').value,
+        newPassword: document.getElementById('newPassword').value,
+        confirmPassword: document.getElementById('confirmPassword').value,
+        currentPassword: document.getElementById('currentPassword') ? document.getElementById('currentPassword').value : ''
+    };
+});
+
+// 重置表单到原始值
+function resetForm() {
+    if (confirm('确定要重置表单吗？所有未保存的修改将被清除。')) {
+        document.getElementById('email').value = originalFormValues.email;
+        document.getElementById('phone').value = originalFormValues.phone;
+        document.getElementById('question_id').value = originalFormValues.question_id;
+        document.getElementById('question_answer').value = originalFormValues.question_answer;
+        document.getElementById('newPassword').value = '';
+        document.getElementById('confirmPassword').value = '';
+        if (document.getElementById('currentPassword')) {
+            document.getElementById('currentPassword').value = '';
+        }
+    }
+}
+
 // 表单验证
 function validateInfoForm(form) {
     const email = document.getElementById('email').value;
     const phone = document.getElementById('phone').value;
+    const question_answer = document.getElementById('question_answer').value;
     const newPassword = document.getElementById('newPassword').value;
     const confirmPassword = document.getElementById('confirmPassword').value;
+    const currentPassword = document.getElementById('currentPassword') ? document.getElementById('currentPassword').value : '';
 
-    // 验证邮箱格式（如果填写了邮箱）
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        alert('请输入有效的邮箱地址');
-        return false;
+    // 检查是否没有任何修改
+    const noChanges =
+        email === originalFormValues.email &&
+        phone === originalFormValues.phone &&
+        document.getElementById('question_id').value === originalFormValues.question_id &&
+        question_answer === originalFormValues.question_answer &&
+        !newPassword &&
+        !confirmPassword;
+
+    if (noChanges) {
+        if (!confirm('您没有修改任何信息，确定要提交吗？')) {
+            return false;
+        }
     }
 
-    // 验证手机号格式（如果填写了手机号）
-    if (phone && !/^1[3-9][0-9]{9}$/.test(phone)) {
-        alert('请输入正确的手机号码（11位）');
-        return false;
+    // 验证邮箱格式（如果填写了新邮箱）
+    if (email && email !== originalFormValues.email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            alert('请输入有效的邮箱地址');
+            return false;
+        }
+    }
+
+    // 验证手机号格式（如果填写了新手机号）
+    if (phone && phone !== originalFormValues.phone) {
+        const phoneRegex = /^1[3-9][0-9]{9}$/;
+        if (!phoneRegex.test(phone)) {
+            alert('请输入正确的手机号码（11位）');
+            return false;
+        }
     }
 
     // 如果填写了新密码，验证密码
     if (newPassword) {
+        // 教师用户需要验证当前密码
+        {% if session.permission == '教师' %}
+        if (!currentPassword) {
+            alert('教师用户修改密码需要输入当前密码');
+            return false;
+        }
+        {% endif %}
+
         // 验证密码长度
         if (newPassword.length < 6) {
             alert('新密码长度至少6位');
@@ -216,7 +388,35 @@ function validateInfoForm(form) {
         }
     }
 
-    return true;
+    // 显示将要修改的项目
+    let changes = [];
+
+    if (email && email !== originalFormValues.email) {
+        changes.push('邮箱');
+    }
+
+    if (phone && phone !== originalFormValues.phone) {
+        changes.push('手机号');
+    }
+
+    if (document.getElementById('question_id').value !== originalFormValues.question_id) {
+        changes.push('密保问题');
+    }
+
+    if (question_answer !== originalFormValues.question_answer) {
+        changes.push('密保答案');
+    }
+
+    if (newPassword) {
+        changes.push('密码');
+    }
+
+    if (changes.length === 0) {
+        return confirm('您没有修改任何信息，确定要提交吗？');
+    }
+
+    const changesText = changes.join('、');
+    return confirm(`确定要更新以下信息吗？\n\n将要修改：${changesText}`);
 }
 </script>
 {% endblock %}

@@ -202,6 +202,25 @@ def validate_user_id(user_id):
         return False
     return True
 
+
+# 在 hash_password 函数后添加密保答案加密函数
+def hash_security_answer(answer):
+    """密保答案加密"""
+    salt = 'security_salt'
+    return f"sha256${salt}${hashlib.sha256(answer.encode()).hexdigest()}"
+
+
+def verify_security_answer(stored_answer, provided_answer):
+    """验证密保答案"""
+    if stored_answer.startswith('sha256$'):
+        parts = stored_answer.split('$')
+        salt = parts[1]
+        stored_hash = parts[2]
+        new_hash = hashlib.sha256(provided_answer.encode()).hexdigest()
+        return stored_hash == new_hash
+    return False
+
+
 def login_required(f):
     """登录验证装饰器"""
     @wraps(f)
@@ -299,7 +318,13 @@ def logout():
 # ==================== 用户注册功能 ====================
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    """用户注册页面"""
+    """用户注册页面 - 支持密保问题设置"""
+    # 获取密保问题列表（GET和POST都需要）
+    cur = mysql.connection.cursor()
+    cur.execute("SELECT question_id, question_text FROM security_questions ORDER BY question_id")
+    questions = cur.fetchall()
+    cur.close()
+
     if request.method == 'POST':
         try:
             user_id = request.form.get('user_id')
@@ -311,27 +336,53 @@ def register():
             email = request.form.get('email', '')
             phone = request.form.get('phone', '')
             remark = request.form.get('remark', '')
+            question_id = request.form.get('question_id', 1, type=int)
+            question_answer = request.form.get('question_answer', '')
 
-            logger.info(f"注册申请 - 用户ID: {user_id}, 真实姓名: {realname}, 职务: {job_title}, 权限申请: {permission}",
-                       extra={'user_id': user_id, 'operation': '用户注册'})
+            logger.info(
+                f"注册申请 - 用户ID: {user_id}, 真实姓名: {realname}, 职务: {job_title}, 权限申请: {permission}",
+                extra={'user_id': user_id, 'operation': '用户注册'})
 
             # 验证输入
             if not user_id or not password or not realname or not email or not phone:
                 flash('请填写所有必填项', 'danger')
-                return redirect(url_for('register'))
+                return render_template('register.html', questions=questions)
 
             # 验证用户ID格式
             if not validate_user_id(user_id):
                 flash('用户ID格式不正确，应为10位数字（四位年份+两位部门+四位顺序号）', 'danger')
-                return redirect(url_for('register'))
+                return render_template('register.html', questions=questions)
 
+            # 验证密码
             if password != password_confirm:
                 flash('两次输入的密码不一致', 'danger')
-                return redirect(url_for('register'))
+                return render_template('register.html', questions=questions)
 
             if len(password) < 6:
                 flash('密码长度至少6位', 'danger')
-                return redirect(url_for('register'))
+                return render_template('register.html', questions=questions)
+
+            # 验证密保问题
+            if not question_id:
+                flash('请选择密保问题', 'danger')
+                return render_template('register.html', questions=questions)
+
+            if not question_answer:
+                flash('密保答案不能为空', 'danger')
+                return render_template('register.html', questions=questions)
+
+            # 验证邮箱格式
+            import re
+            email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+            if not email_pattern.match(email):
+                flash('请输入有效的邮箱地址', 'danger')
+                return render_template('register.html', questions=questions)
+
+            # 验证手机号格式
+            phone_pattern = re.compile(r'^1[3-9]\d{9}$')
+            if not phone_pattern.match(phone):
+                flash('请输入有效的11位手机号', 'danger')
+                return render_template('register.html', questions=questions)
 
             cur = mysql.connection.cursor()
 
@@ -339,106 +390,195 @@ def register():
             cur.execute("SELECT user_id FROM user_requests WHERE user_id = %s AND status = '待审批'", (user_id,))
             if cur.fetchone():
                 logger.warning(f"重复注册申请 - 用户ID: {user_id}",
-                              extra={'user_id': user_id, 'operation': '用户注册'})
+                               extra={'user_id': user_id, 'operation': '用户注册'})
                 flash('您已提交过注册申请，请等待审批结果', 'warning')
                 cur.close()
-                return redirect(url_for('register'))
+                return render_template('register.html', questions=questions)
 
             # 检查用户ID是否已存在
             cur.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
             if cur.fetchone():
                 flash('该用户ID已存在，请使用其他ID', 'danger')
                 cur.close()
-                return redirect(url_for('register'))
+                return render_template('register.html', questions=questions)
 
             # 加密密码
             hashed_password = hash_password(password)
 
+            # 加密密保答案
+            hashed_answer = hash_security_answer(question_answer)
+
             # 插入注册申请
             cur.execute("""
-                INSERT INTO user_requests (user_id, password, realname, permission, job_title, email, phone, remark, status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, '待审批')
-            """, (user_id, hashed_password, realname, permission, job_title, email, phone, remark))
+                INSERT INTO user_requests (user_id, password, realname, permission, job_title, 
+                                          email, phone, remark, status, question_id, question_answer)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, '待审批', %s, %s)
+            """, (user_id, hashed_password, realname, permission, job_title,
+                  email, phone, remark, question_id, hashed_answer))
 
             mysql.connection.commit()
             cur.close()
 
             logger.info(f"注册申请提交成功 - 用户ID: {user_id}, 真实姓名: {realname}",
-                       extra={'user_id': user_id, 'operation': '用户注册'})
+                        extra={'user_id': user_id, 'operation': '用户注册'})
+
             flash('注册申请已提交，请等待管理员审批。审批通过后您将收到通知。', 'success')
             return redirect(url_for('login'))
 
         except Exception as e:
             logger.error(f"注册申请失败 - 用户ID: {user_id}, 错误: {str(e)}",
-                        extra={'user_id': user_id, 'operation': '用户注册'})
+                         extra={'user_id': user_id, 'operation': '用户注册'})
             logger.error(traceback.format_exc(),
-                        extra={'user_id': user_id, 'operation': '用户注册'})
+                         extra={'user_id': user_id, 'operation': '用户注册'})
             flash(f'注册失败: {str(e)}', 'danger')
-            return redirect(url_for('register'))
+            return render_template('register.html', questions=questions)
 
-    return render_template('register.html')
+    # GET请求：显示注册表单
+    return render_template('register.html', questions=questions)
 
 # ==================== 忘记密码功能 ====================
 @app.route('/forgot_password', methods=['GET', 'POST'])
 def forgot_password():
-    """忘记密码 - 重置密码为默认密码"""
+    """忘记密码 - 通过密保问题重置密码"""
     if request.method == 'POST':
         try:
             user_id = request.form.get('user_id')
+            step = request.form.get('step', '1')  # 步骤：1-验证用户ID，2-验证密保问题，3-重置密码
 
-            if not user_id:
-                flash('请输入用户ID', 'danger')
-                return redirect(url_for('forgot_password'))
-
-            logger.info(f"密码重置请求 - 用户ID: {user_id}",
-                       extra={'user_id': user_id, 'operation': '密码重置'})
+            logger.info(f"密码重置请求 - 用户ID: {user_id}, 步骤: {step}",
+                        extra={'user_id': user_id, 'operation': '密码重置'})
 
             # 验证用户ID格式（10位数字）
             if not re.match(r'^\d{10}$', user_id):
                 logger.warning(f"密码重置失败 - 用户ID格式不正确: {user_id}",
-                              extra={'user_id': user_id, 'operation': '密码重置'})
+                               extra={'user_id': user_id, 'operation': '密码重置'})
                 flash('用户ID格式不正确，应为10位数字（四位年份+两位部门+四位顺序号）', 'danger')
                 return redirect(url_for('forgot_password'))
 
             cur = mysql.connection.cursor()
 
-            # 验证用户ID是否存在
-            cur.execute("SELECT user_id, realname FROM users WHERE user_id = %s", (user_id,))
-            user = cur.fetchone()
+            # 步骤1：验证用户ID是否存在
+            if step == '1':
+                cur.execute("""
+                    SELECT u.user_id, u.realname, q.question_text 
+                    FROM users u 
+                    LEFT JOIN security_questions q ON u.question_id = q.question_id 
+                    WHERE u.user_id = %s
+                """, (user_id,))
+                user = cur.fetchone()
 
-            if not user:
-                logger.warning(f"密码重置失败 - 用户ID不存在: {user_id}",
-                              extra={'user_id': user_id, 'operation': '密码重置'})
-                flash('用户ID不存在', 'danger')
+                if not user:
+                    logger.warning(f"密码重置失败 - 用户ID不存在: {user_id}",
+                                   extra={'user_id': user_id, 'operation': '密码重置'})
+                    flash('用户ID不存在', 'danger')
+                    cur.close()
+                    return redirect(url_for('forgot_password'))
+
+                # 存储用户ID到session，用于后续步骤
+                session['reset_user_id'] = user_id
+                session['reset_step'] = '2'
+
+                logger.info(f"密码重置步骤1通过 - 用户ID: {user_id}, 姓名: {user['realname']}",
+                            extra={'user_id': user_id, 'operation': '密码重置'})
+
                 cur.close()
-                return redirect(url_for('forgot_password'))
+                return render_template('forgot_password.html',
+                                       user=user,
+                                       step='2',
+                                       question_text=user['question_text'])
 
-            # 重置密码为默认密码 123456
-            default_password = '123456'
-            hashed_password = hash_password(default_password)
+            # 步骤2：验证密保答案
+            elif step == '2':
+                user_id = session.get('reset_user_id')
+                if not user_id:
+                    flash('会话已过期，请重新开始', 'danger')
+                    return redirect(url_for('forgot_password'))
 
-            # 更新密码
-            cur.execute("""
-                UPDATE users 
-                SET password = %s, updated_at = CURRENT_TIMESTAMP
-                WHERE user_id = %s
-            """, (hashed_password, user_id))
+                answer = request.form.get('answer', '').strip()
 
-            mysql.connection.commit()
-            cur.close()
+                if not answer:
+                    flash('请输入密保答案', 'danger')
+                    return redirect(url_for('forgot_password'))
 
-            logger.info(f"密码重置成功 - 用户ID: {user_id}, 姓名: {user['realname']}",
-                       extra={'user_id': user_id, 'operation': '密码重置'})
-            flash(f'密码已重置为默认密码: 123456，请尽快登录修改密码', 'success')
-            return redirect(url_for('login'))
+                # 获取用户的密保答案
+                cur.execute("""
+                    SELECT u.question_answer, u.realname, q.question_text 
+                    FROM users u 
+                    LEFT JOIN security_questions q ON u.question_id = q.question_id 
+                    WHERE u.user_id = %s
+                """, (user_id,))
+                user = cur.fetchone()
+
+                if not user:
+                    flash('用户信息不存在', 'danger')
+                    cur.close()
+                    return redirect(url_for('forgot_password'))
+
+                # 验证密保答案
+                if verify_security_answer(user['question_answer'], answer):
+                    session['reset_step'] = '3'
+                    session['reset_verified'] = True
+
+                    logger.info(f"密码重置步骤2通过 - 用户ID: {user_id}, 姓名: {user['realname']}",
+                                extra={'user_id': user_id, 'operation': '密码重置'})
+
+                    cur.close()
+                    return render_template('forgot_password.html',
+                                           user={'user_id': user_id, 'realname': user['realname']},
+                                           step='3')
+                else:
+                    logger.warning(f"密码重置步骤2失败 - 密保答案错误: {user_id}",
+                                   extra={'user_id': user_id, 'operation': '密码重置'})
+                    flash('密保答案错误，请重新输入', 'danger')
+                    cur.close()
+                    return render_template('forgot_password.html',
+                                           user={'user_id': user_id, 'realname': user['realname']},
+                                           step='2',
+                                           question_text=user['question_text'])
+
+            # 步骤3：重置密码
+            elif step == '3':
+                user_id = session.get('reset_user_id')
+                if not user_id or not session.get('reset_verified'):
+                    flash('验证未通过或会话已过期', 'danger')
+                    return redirect(url_for('forgot_password'))
+
+                # 重置密码为默认密码 123456
+                default_password = '123456'
+                hashed_password = hash_password(default_password)
+
+                # 更新密码
+                cur.execute("""
+                    UPDATE users 
+                    SET password = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s
+                """, (hashed_password, user_id))
+
+                mysql.connection.commit()
+
+                # 获取用户信息用于日志
+                cur.execute("SELECT realname FROM users WHERE user_id = %s", (user_id,))
+                user = cur.fetchone()
+                cur.close()
+
+                # 清除session
+                session.pop('reset_user_id', None)
+                session.pop('reset_step', None)
+                session.pop('reset_verified', None)
+
+                logger.info(f"密码重置成功 - 用户ID: {user_id}, 姓名: {user['realname']}",
+                            extra={'user_id': user_id, 'operation': '密码重置'})
+                flash(f'密码已重置为默认密码: 123456，请立即登录并修改密码', 'success')
+                return redirect(url_for('login'))
 
         except Exception as e:
             logger.error(f"密码重置失败 - 用户ID: {user_id}, 错误: {str(e)}",
-                        extra={'user_id': user_id, 'operation': '密码重置'})
+                         extra={'user_id': user_id, 'operation': '密码重置'})
             flash(f'重置密码失败: {str(e)}', 'danger')
             return redirect(url_for('forgot_password'))
 
-    return render_template('forgot_password.html')
+    # GET请求：显示第一步表单
+    return render_template('forgot_password.html', step='1')
 
 # ==================== 仪表板 ====================
 @app.route('/dashboard')
@@ -505,34 +645,51 @@ def dashboard():
 def my_info():
     """查看和修改个人信息"""
     cur = mysql.connection.cursor()
+
+    # 获取用户信息
     cur.execute("SELECT * FROM users WHERE user_id = %s", (session['user_id'],))
     user = cur.fetchone()
-    cur.close()
 
     if not user:
         flash('用户信息不存在', 'danger')
         return redirect(url_for('dashboard'))
 
-    return render_template('my_info.html', user=user)
+    # 获取用户当前的密保问题
+    question_text = ''
+    if user['question_id']:
+        cur.execute("SELECT question_text FROM security_questions WHERE question_id = %s", (user['question_id'],))
+        question = cur.fetchone()
+        if question:
+            question_text = question['question_text']
+
+    # 获取所有密保问题列表
+    cur.execute("SELECT question_id, question_text FROM security_questions ORDER BY question_id")
+    questions = cur.fetchall()
+
+    cur.close()
+
+    return render_template('my_info.html', user=user, questions=questions, question_text=question_text)
 
 
 @app.route('/my_info/update', methods=['POST'])
 @login_required
 @log_operation("更新个人信息")
 def update_my_info():
-    """更新个人信息"""
+    """更新个人信息 - 支持部分字段更新"""
     try:
         # 获取表单数据
         current_password = request.form.get('current_password')
         new_password = request.form.get('new_password')
         password_confirm = request.form.get('password_confirm')
-        email = request.form.get('email', '')
-        phone = request.form.get('phone', '')
+        email = request.form.get('email')
+        phone = request.form.get('phone')
+        question_id = request.form.get('question_id')
+        question_answer = request.form.get('question_answer')
 
         cur = mysql.connection.cursor()
 
-        # 验证当前密码
-        cur.execute("SELECT password FROM users WHERE user_id = %s", (session['user_id'],))
+        # 获取当前用户信息
+        cur.execute("SELECT * FROM users WHERE user_id = %s", (session['user_id'],))
         user = cur.fetchone()
 
         if not user:
@@ -540,15 +697,21 @@ def update_my_info():
             cur.close()
             return redirect(url_for('my_info'))
 
-        # 验证当前密码
-        if session.get('permission') == '教师':
-            if not verify_password(user['password'], current_password):
-                flash('当前密码错误', 'danger')
-                cur.close()
-                return redirect(url_for('my_info'))
+        # 构建更新语句
+        update_fields = []
+        update_values = []
+        changed_fields = []
 
-        # 如果提供了新密码，则更新密码
+        # 处理密码修改
         if new_password:
+            # 教师用户需要验证当前密码
+            if session.get('permission') == '教师':
+                if not current_password or not verify_password(user['password'], current_password):
+                    flash('当前密码错误', 'danger')
+                    cur.close()
+                    return redirect(url_for('my_info'))
+
+            # 验证新密码
             if len(new_password) < 6:
                 flash('新密码长度至少6位', 'danger')
                 cur.close()
@@ -559,33 +722,92 @@ def update_my_info():
                 cur.close()
                 return redirect(url_for('my_info'))
 
-            # 加密新密码
             hashed_password = hash_password(new_password)
+            update_fields.append("password = %s")
+            update_values.append(hashed_password)
+            changed_fields.append('密码')
 
-            # 更新密码和联系信息
-            cur.execute("""
-                UPDATE users 
-                SET password = %s, email = %s, phone = %s, updated_at = CURRENT_TIMESTAMP
-                WHERE user_id = %s
-            """, (hashed_password, email, phone, session['user_id']))
-        else:
-            # 只更新联系信息
-            cur.execute("""
-                UPDATE users 
-                SET email = %s, phone = %s, updated_at = CURRENT_TIMESTAMP
-                WHERE user_id = %s
-            """, (email, phone, session['user_id']))
+        # 处理邮箱修改
+        if email is not None and email != user.get('email', ''):
+            update_fields.append("email = %s")
+            update_values.append(email)
+            changed_fields.append('邮箱')
 
+        # 处理手机号修改
+        if phone is not None and phone != user.get('phone', ''):
+            # 验证手机号格式（如果修改了手机号）
+            if phone:
+                import re
+                if not re.match(r'^1[3-9][0-9]{9}$', phone):
+                    flash('请输入正确的手机号码（11位）', 'danger')
+                    cur.close()
+                    return redirect(url_for('my_info'))
+
+            update_fields.append("phone = %s")
+            update_values.append(phone)
+            changed_fields.append('手机号')
+
+        # 处理密保问题ID修改
+        if question_id is not None:
+            try:
+                question_id_int = int(question_id)
+                if question_id_int != user.get('question_id', 1):
+                    update_fields.append("question_id = %s")
+                    update_values.append(question_id_int)
+                    changed_fields.append('密保问题')
+            except ValueError:
+                flash('密保问题格式错误', 'danger')
+                cur.close()
+                return redirect(url_for('my_info'))
+
+        # 处理密保答案修改
+        if question_answer is not None and question_answer.strip() != '':
+            # 只有在用户提供了新答案时才更新
+            hashed_answer = hash_security_answer(question_answer.strip())
+            update_fields.append("question_answer = %s")
+            update_values.append(hashed_answer)
+            changed_fields.append('密保答案')
+        elif question_answer is not None and question_answer.strip() == '':
+            # 用户明确清空了答案，使用默认值
+            default_answer = 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'
+            update_fields.append("question_answer = %s")
+            update_values.append(default_answer)
+            changed_fields.append('密保答案（重置为默认）')
+
+        # 如果没有需要更新的字段，直接返回
+        if not update_fields:
+            flash('没有检测到任何修改', 'info')
+            cur.close()
+            return redirect(url_for('my_info'))
+
+        # 添加更新时间
+        update_fields.append("updated_at = CURRENT_TIMESTAMP")
+
+        # 执行更新
+        update_values.append(session['user_id'])
+        update_query = f"""
+            UPDATE users 
+            SET {', '.join(update_fields)}
+            WHERE user_id = %s
+        """
+
+        cur.execute(update_query, update_values)
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"个人信息更新成功 - 用户ID: {session['user_id']}",
-                   extra={'user_id': session['user_id'], 'operation': '更新个人信息'})
-        flash('个人信息更新成功', 'success')
+        # 记录变更的字段
+        changes_text = '、'.join(changed_fields)
+        logger.info(f"个人信息更新成功 - 用户ID: {session['user_id']}, 变更字段: {changes_text}",
+                    extra={'user_id': session['user_id'], 'operation': '更新个人信息'})
+
+        if len(changed_fields) == 1 and '密码' in changed_fields:
+            flash('密码修改成功', 'success')
+        else:
+            flash(f'个人信息更新成功：{changes_text}', 'success')
 
     except Exception as e:
         logger.error(f"个人信息更新失败 - 用户ID: {session['user_id']}, 错误: {str(e)}",
-                    extra={'user_id': session['user_id'], 'operation': '更新个人信息'})
+                     extra={'user_id': session['user_id'], 'operation': '更新个人信息'})
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('my_info'))
@@ -1950,6 +2172,7 @@ def users():
                                'updated_end': updated_end
                            })
 
+
 @app.route('/users/add', methods=['POST'])
 @admin_required
 @log_operation("添加用户")
@@ -1963,9 +2186,12 @@ def add_user():
         permission = request.form.get('permission')
         email = request.form.get('email', '')
         phone = request.form.get('phone', '')
+        # 新增密保字段
+        question_id = request.form.get('question_id', 1, type=int)
+        question_answer = request.form.get('question_answer', '')
 
         logger.info(f"添加用户 - 用户ID: {user_id}, 真实姓名: {realname}, 职务: {job_title}, 权限: {permission}",
-                   extra={'user_id': session['user_id'], 'operation': '添加用户'})
+                    extra={'user_id': session['user_id'], 'operation': '添加用户'})
 
         if not user_id or not password or not realname or not job_title:
             flash('请填写完整信息', 'danger')
@@ -1978,6 +2204,13 @@ def add_user():
 
         hashed_password = hash_password(password)
 
+        # 处理密保答案：如果提供了答案就加密，否则使用默认值
+        if question_answer:
+            hashed_answer = hash_security_answer(question_answer)
+        else:
+            # 使用默认加密答案
+            hashed_answer = 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'
+
         cur = mysql.connection.cursor()
 
         # 检查用户ID是否已存在
@@ -1988,64 +2221,162 @@ def add_user():
             return redirect(url_for('users'))
 
         cur.execute("""
-            INSERT INTO users (user_id, password, realname, permission, job_title, email, phone)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (user_id, hashed_password, realname, permission, job_title, email, phone))
+            INSERT INTO users (user_id, password, realname, permission, job_title, 
+                              email, phone, question_id, question_answer)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (user_id, hashed_password, realname, permission, job_title,
+              email, phone, question_id, hashed_answer))
 
         mysql.connection.commit()
         cur.close()
 
         logger.info(f"添加用户成功 - 用户ID: {user_id}, 真实姓名: {realname}",
-                   extra={'user_id': session['user_id'], 'operation': '添加用户'})
+                    extra={'user_id': session['user_id'], 'operation': '添加用户'})
         flash(f'用户添加成功！用户ID: {user_id}', 'success')
     except Exception as e:
         logger.error(f"添加用户失败 - 用户ID: {user_id}, 错误: {str(e)}",
-                    extra={'user_id': session['user_id'], 'operation': '添加用户'})
+                     extra={'user_id': session['user_id'], 'operation': '添加用户'})
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('users'))
+
 
 @app.route('/users/edit/<user_id>', methods=['POST'])
 @admin_required
 @log_operation("编辑用户")
 def edit_user(user_id):
-    """编辑用户"""
+    """编辑用户 - 支持部分字段更新"""
     try:
         realname = request.form.get('realname')
         job_title = request.form.get('job_title')
         permission = request.form.get('permission')
-        email = request.form.get('email', '')
-        phone = request.form.get('phone', '')
+        email = request.form.get('email')
+        phone = request.form.get('phone')
         password = request.form.get('password')
+        question_id = request.form.get('question_id')
+        question_answer = request.form.get('question_answer')
 
         logger.info(f"编辑用户 - 用户ID: {user_id}, 新真实姓名: {realname}, 新职务: {job_title}, 新权限: {permission}",
-                   extra={'user_id': session['user_id'], 'operation': '编辑用户'})
+                    extra={'user_id': session['user_id'], 'operation': '编辑用户'})
 
         cur = mysql.connection.cursor()
 
-        if password:
-            hashed_password = hash_password(password)
-            cur.execute("""
-                UPDATE users 
-                SET realname=%s, job_title=%s, permission=%s, email=%s, phone=%s, password=%s, updated_at=CURRENT_TIMESTAMP
-                WHERE user_id=%s
-            """, (realname, job_title, permission, email, phone, hashed_password, user_id))
-        else:
-            cur.execute("""
-                UPDATE users 
-                SET realname=%s, job_title=%s, permission=%s, email=%s, phone=%s, updated_at=CURRENT_TIMESTAMP
-                WHERE user_id=%s
-            """, (realname, job_title, permission, email, phone, user_id))
+        # 获取当前用户信息
+        cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+        user = cur.fetchone()
 
+        if not user:
+            flash('用户不存在', 'danger')
+            cur.close()
+            return redirect(url_for('users'))
+
+        # 构建更新语句
+        update_fields = []
+        update_values = []
+        changed_fields = []
+
+        # 处理基本字段
+        if realname is not None and realname != user.get('realname', ''):
+            update_fields.append("realname = %s")
+            update_values.append(realname)
+            changed_fields.append('真实姓名')
+
+        if job_title is not None and job_title != user.get('job_title', ''):
+            update_fields.append("job_title = %s")
+            update_values.append(job_title)
+            changed_fields.append('职务')
+
+        if permission is not None and permission != user.get('permission', ''):
+            update_fields.append("permission = %s")
+            update_values.append(permission)
+            changed_fields.append('权限')
+
+        # 处理邮箱
+        if email is not None and email != user.get('email', ''):
+            update_fields.append("email = %s")
+            update_values.append(email)
+            changed_fields.append('邮箱')
+
+        # 处理手机号
+        if phone is not None and phone != user.get('phone', ''):
+            # 验证手机号格式（如果修改了手机号）
+            if phone:
+                import re
+                if not re.match(r'^1[3-9][0-9]{9}$', phone):
+                    flash('请输入正确的手机号码（11位）', 'danger')
+                    cur.close()
+                    return redirect(url_for('users'))
+
+            update_fields.append("phone = %s")
+            update_values.append(phone)
+            changed_fields.append('手机号')
+
+        # 处理密码修改
+        if password and password.strip() != '':
+            hashed_password = hash_password(password)
+            update_fields.append("password = %s")
+            update_values.append(hashed_password)
+            changed_fields.append('密码')
+
+        # 处理密保问题ID
+        if question_id is not None:
+            try:
+                question_id_int = int(question_id)
+                if question_id_int != user.get('question_id', 1):
+                    update_fields.append("question_id = %s")
+                    update_values.append(question_id_int)
+                    changed_fields.append('密保问题')
+            except ValueError:
+                flash('密保问题格式错误', 'danger')
+                cur.close()
+                return redirect(url_for('users'))
+
+        # 处理密保答案
+        if question_answer is not None:
+            if question_answer.strip() != '':
+                # 提供了新答案
+                hashed_answer = hash_security_answer(question_answer.strip())
+                update_fields.append("question_answer = %s")
+                update_values.append(hashed_answer)
+                changed_fields.append('密保答案')
+            elif question_answer.strip() == '':
+                # 清空了答案，使用默认值
+                default_answer = 'sha256$salt$240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'
+                update_fields.append("question_answer = %s")
+                update_values.append(default_answer)
+                changed_fields.append('密保答案（重置为默认）')
+
+        # 如果没有需要更新的字段，直接返回
+        if not update_fields:
+            flash('没有检测到任何修改', 'info')
+            cur.close()
+            return redirect(url_for('users'))
+
+        # 添加更新时间
+        update_fields.append("updated_at = CURRENT_TIMESTAMP")
+
+        # 执行更新
+        update_values.append(user_id)
+        update_query = f"""
+            UPDATE users 
+            SET {', '.join(update_fields)}
+            WHERE user_id = %s
+        """
+
+        cur.execute(update_query, update_values)
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"编辑用户成功 - 用户ID: {user_id}",
-                   extra={'user_id': session['user_id'], 'operation': '编辑用户'})
-        flash('用户信息更新成功', 'success')
+        # 记录变更
+        changes_text = '、'.join(changed_fields)
+        logger.info(f"编辑用户成功 - 用户ID: {user_id}, 变更字段: {changes_text}",
+                    extra={'user_id': session['user_id'], 'operation': '编辑用户'})
+
+        flash(f'用户信息更新成功：{changes_text}', 'success')
+
     except Exception as e:
         logger.error(f"编辑用户失败 - 用户ID: {user_id}, 错误: {str(e)}",
-                    extra={'user_id': session['user_id'], 'operation': '编辑用户'})
+                     extra={'user_id': session['user_id'], 'operation': '编辑用户'})
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('users'))
