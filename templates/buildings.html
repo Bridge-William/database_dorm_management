@@ -145,7 +145,7 @@
                         <label for="addBuildingId" class="form-label">公寓楼号 <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="addBuildingId" name="building_id"
                                required maxlength="20" placeholder="例如: A栋, 1号楼">
-                        <div class="form-text">建议使用简短易记的名称</div>
+                        <div class="form-text">建议使用简短易记的名称，创建后不可修改</div>
                     </div>
                     <div class="mb-3">
                         <label for="addFloors" class="form-label">楼层数 <span class="text-danger">*</span></label>
@@ -189,8 +189,9 @@
             <form method="POST" id="editBuildingForm" onsubmit="return validateBuildingForm(this)">
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label for="editBuildingId" class="form-label">公寓楼号 <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="editBuildingId" name="building_id" required>
+                        <label for="editBuildingId" class="form-label">公寓楼号</label>
+                        <input type="text" class="form-control" id="editBuildingId" name="building_id" readonly>
+                        <div class="form-text text-warning">楼号创建后不可修改</div>
                     </div>
                     <div class="mb-3">
                         <label for="editFloors" class="form-label">楼层数 <span class="text-danger">*</span></label>

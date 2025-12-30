@@ -835,12 +835,12 @@ def students():
 
     # 构建查询条件
     query = """
-        SELECT s.*, 
-               (SELECT COUNT(*) FROM payments WHERE student_id = s.student_id) as payment_count,
-               (SELECT SUM(amount) FROM payments WHERE student_id = s.student_id) as total_paid
-        FROM students s
-        WHERE 1=1
-    """
+            SELECT s.*, 
+                   (SELECT COUNT(*) FROM payments WHERE student_id = s.student_id) as payment_count,
+                   (SELECT SUM(amount) FROM payments WHERE student_id = s.student_id) as total_paid
+            FROM students s
+            WHERE 1=1
+        """
     params = []
 
     if student_id:
@@ -952,12 +952,12 @@ def add_student():
         # 检查房间容量
         if room_id:
             cur.execute("""
-                SELECT r.capacity, COUNT(s.student_id) as current 
-                FROM rooms r 
-                LEFT JOIN students s ON r.room_id = s.room_id 
-                WHERE r.room_id = %s 
-                GROUP BY r.room_id, r.capacity
-            """, (room_id,))
+                        SELECT r.capacity, COUNT(s.student_id) as current 
+                        FROM rooms r 
+                        LEFT JOIN students s ON r.room_id = s.room_id 
+                        WHERE r.room_id = %s 
+                        GROUP BY r.room_id, r.capacity
+                    """, (room_id,))
             room = cur.fetchone()
             if room and room['current'] >= room['capacity']:
                 flash('该寝室已满员', 'danger')
@@ -1005,12 +1005,12 @@ def edit_student(student_id):
         # 检查房间容量
         if room_id:
             cur.execute("""
-                SELECT r.capacity, COUNT(s.student_id) as current 
-                FROM rooms r 
-                LEFT JOIN students s ON r.room_id = s.room_id 
-                WHERE r.room_id = %s AND s.student_id != %s
-                GROUP BY r.room_id, r.capacity
-            """, (room_id, student_id))
+                        SELECT r.capacity, COUNT(s.student_id) as current 
+                        FROM rooms r 
+                        LEFT JOIN students s ON r.room_id = s.room_id 
+                        WHERE r.room_id = %s AND s.student_id != %s
+                        GROUP BY r.room_id, r.capacity
+                    """, (room_id, student_id))
             room = cur.fetchone()
             if room and room['current'] >= room['capacity']:
                 flash('该寝室已满员', 'danger')
@@ -1182,93 +1182,36 @@ def add_building():
 @login_required
 @log_operation("编辑公寓楼")
 def edit_building(building_id):
-    """编辑公寓楼 - 支持级联更新"""
+    """编辑公寓楼 - 禁止修改楼号"""
     try:
-        new_building_id = request.form.get('building_id')  # 新楼号
+        # 获取表单数据，但不允许修改楼号
         floors = request.form.get('floors', type=int)
         rooms_count = request.form.get('rooms_count', type=int)
         commission_date = request.form.get('commission_date')
 
         logger.info(
-            f"编辑公寓楼 - 原楼号: {building_id}, 新楼号: {new_building_id}, 新楼层: {floors}, 新房间数: {rooms_count}",
+            f"编辑公寓楼 - 楼号: {building_id}, 新楼层: {floors}, 新房间数: {rooms_count}",
             extra={'user_id': session['user_id'], 'operation': '编辑公寓楼'})
 
         cur = mysql.connection.cursor()
 
-        # 如果楼号没有改变，直接更新其他信息
-        if new_building_id == building_id:
-            cur.execute("""
-                UPDATE buildings 
-                SET building_id=%s, floors=%s, rooms_count=%s, commission_date=%s
-                WHERE building_id=%s
-            """, (new_building_id, floors, rooms_count, commission_date, building_id))
-            mysql.connection.commit()
-            cur.close()
-            logger.info(f"编辑公寓楼成功 - 楼号: {building_id}",
-                       extra={'user_id': session['user_id'], 'operation': '编辑公寓楼'})
-            flash('公寓楼信息更新成功', 'success')
-            return redirect(url_for('buildings'))
+        # 直接更新，不允许修改楼号
+        cur.execute("""
+            UPDATE buildings 
+            SET floors=%s, rooms_count=%s, commission_date=%s
+            WHERE building_id=%s
+        """, (floors, rooms_count, commission_date, building_id))
 
-        # 如果楼号改变了，检查新楼号是否已存在
-        cur.execute("SELECT building_id FROM buildings WHERE building_id = %s", (new_building_id,))
-        if cur.fetchone():
-            flash('新楼号已存在', 'danger')
-            cur.close()
-            return redirect(url_for('buildings'))
+        mysql.connection.commit()
+        cur.close()
 
-        # 使用事务更新所有相关表
-        try:
-            # 开始事务
-            cur.execute("START TRANSACTION")
-
-            # 更新公寓楼表
-            cur.execute("""
-                UPDATE buildings 
-                SET building_id=%s, floors=%s, rooms_count=%s, commission_date=%s
-                WHERE building_id=%s
-            """, (new_building_id, floors, rooms_count, commission_date, building_id))
-
-            # 更新寝室表
-            cur.execute("""
-                UPDATE rooms 
-                SET building_id=%s
-                WHERE building_id=%s
-            """, (new_building_id, building_id))
-
-            # 更新学生表
-            cur.execute("""
-                UPDATE students 
-                SET building_id=%s
-                WHERE building_id=%s
-            """, (new_building_id, building_id))
-
-            # 更新交费记录表
-            cur.execute("""
-                UPDATE payments 
-                SET building_id=%s
-                WHERE building_id=%s
-            """, (new_building_id, building_id))
-
-            # 提交事务
-            mysql.connection.commit()
-
-            logger.info(f"编辑公寓楼成功 - 原楼号: {building_id}, 新楼号: {new_building_id}",
-                       extra={'user_id': session['user_id'], 'operation': '编辑公寓楼'})
-            flash('公寓楼信息更新成功', 'success')
-
-        except Exception as e:
-            # 回滚事务
-            mysql.connection.rollback()
-            logger.error(f"编辑公寓楼事务失败 - 楼号: {building_id}, 错误: {str(e)}",
-                        extra={'user_id': session['user_id'], 'operation': '编辑公寓楼'})
-            flash(f'更新失败: {str(e)}', 'danger')
-
-        finally:
-            cur.close()
+        logger.info(f"编辑公寓楼成功 - 楼号: {building_id}",
+                    extra={'user_id': session['user_id'], 'operation': '编辑公寓楼'})
+        flash('公寓楼信息更新成功', 'success')
 
     except Exception as e:
         logger.error(f"编辑公寓楼失败 - 楼号: {building_id}, 错误: {str(e)}",
-                    extra={'user_id': session['user_id'], 'operation': '编辑公寓楼'})
+                     extra={'user_id': session['user_id'], 'operation': '编辑公寓楼'})
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('buildings'))
@@ -1313,11 +1256,11 @@ def rooms():
 
     cur = mysql.connection.cursor()
 
-    # 构建查询
+    # 构建查询 - 使用新的表结构
     query = """
         SELECT r.*,
-               (SELECT COUNT(*) FROM students WHERE building_id = r.building_id AND room_id = r.room_id) as current_occupancy,
-               r.capacity - (SELECT COUNT(*) FROM students WHERE building_id = r.building_id AND room_id = r.room_id) as available_beds
+               (SELECT COUNT(*) FROM students WHERE room_id = r.room_id) as current_occupancy,
+               r.capacity - (SELECT COUNT(*) FROM students WHERE room_id = r.room_id) as available_beds
         FROM rooms r
         WHERE 1=1
     """
@@ -1343,7 +1286,8 @@ def rooms():
         query += " AND r.phone LIKE %s"
         params.append(f'%{phone_filter}%')
 
-    query += " ORDER BY r.building_id, CAST(r.room_id AS UNSIGNED), r.room_id"
+    # 修改排序逻辑
+    query += " ORDER BY r.building_id, LENGTH(r.room_id), r.room_id"
 
     cur.execute(query, params)
     rooms_list = cur.fetchall()
@@ -1383,67 +1327,73 @@ def rooms():
 def add_room():
     """添加寝室"""
     try:
-        building_id = request.form.get('building_id')  # 先获取楼号
-        room_id = request.form.get('room_id')  # 纯数字寝室号
+        building_id = request.form.get('building_id')
+        room_number = request.form.get('room_number')  # 修改：获取数字部分
         capacity = request.form.get('capacity', type=int)
         fee = request.form.get('fee', type=float)
         phone = request.form.get('phone')
 
-        logger.info(f"添加寝室 - 楼号: {building_id}, 寝室号: {room_id}, 容量: {capacity}, 费用: {fee}",
-                   extra={'user_id': session['user_id'], 'operation': '添加寝室'})
+        # 生成新的寝室号格式：building_id + room_number
+        room_id = f"{building_id}{room_number}"
+
+        logger.info(
+            f"添加寝室 - 楼号: {building_id}, 寝室号: {room_id}, 数字部分: {room_number}, 容量: {capacity}, 费用: {fee}",
+            extra={'user_id': session['user_id'], 'operation': '添加寝室'})
 
         cur = mysql.connection.cursor()
 
-        # 检查同一楼栋内寝室号是否重复
-        cur.execute("SELECT room_id FROM rooms WHERE building_id = %s AND room_id = %s", (building_id, room_id))
+        # 检查寝室号是否重复（新寝室号格式）
+        cur.execute("SELECT room_id FROM rooms WHERE room_id = %s", (room_id,))
         if cur.fetchone():
-            flash('该楼栋中此寝室号已存在', 'danger')
+            flash('该寝室号已存在', 'danger')
             cur.close()
             return redirect(url_for('rooms'))
 
         cur.execute("""
-            INSERT INTO rooms (building_id, room_id, capacity, fee, phone)
+            INSERT INTO rooms (room_id, building_id, capacity, fee, phone)
             VALUES (%s, %s, %s, %s, %s)
-        """, (building_id, room_id, capacity, fee, phone))
+        """, (room_id, building_id, capacity, fee, phone))
 
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"添加寝室成功 - 楼号: {building_id}, 寝室号: {room_id}",
-                   extra={'user_id': session['user_id'], 'operation': '添加寝室'})
+        logger.info(f"添加寝室成功 - 寝室号: {room_id}",
+                    extra={'user_id': session['user_id'], 'operation': '添加寝室'})
         flash('寝室添加成功', 'success')
     except Exception as e:
-        logger.error(f"添加寝室失败 - 楼号: {building_id}, 寝室号: {room_id}, 错误: {str(e)}",
-                    extra={'user_id': session['user_id'], 'operation': '添加寝室'})
+        logger.error(f"添加寝室失败 - 寝室号: {room_id}, 错误: {str(e)}",
+                     extra={'user_id': session['user_id'], 'operation': '添加寝室'})
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('rooms'))
 
 
-@app.route('/rooms/edit/<building_id>/<room_id>', methods=['POST'])
+@app.route('/rooms/edit/<room_id>', methods=['POST'])
 @login_required
 @log_operation("编辑寝室")
-def edit_room(building_id, room_id):
+def edit_room(room_id):
     """编辑寝室"""
     try:
-        new_building_id = request.form.get('building_id')
-        new_room_id = request.form.get('room_id')
+        building_id = request.form.get('building_id')
+        new_room_number = request.form.get('room_number')  # 新的数字部分
         capacity = request.form.get('capacity', type=int)
         fee = request.form.get('fee', type=float)
         phone = request.form.get('phone')
 
+        # 生成新的完整寝室号
+        new_room_id = f"{building_id}{new_room_number}"
+
         logger.info(
-            f"编辑寝室 - 原楼号: {building_id}, 原寝室号: {room_id}, 新楼号: {new_building_id}, 新寝室号: {new_room_id}",
+            f"编辑寝室 - 原寝室号: {room_id}, 新寝室号: {new_room_id}, 楼号: {building_id}, 数字部分: {new_room_number}",
             extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
 
         cur = mysql.connection.cursor()
 
-        # 如果楼栋或寝室号改变了，检查是否已存在
-        if new_building_id != building_id or new_room_id != room_id:
-            cur.execute("SELECT building_id, room_id FROM rooms WHERE building_id = %s AND room_id = %s",
-                        (new_building_id, new_room_id))
+        # 如果寝室号改变了，检查是否已存在
+        if new_room_id != room_id:
+            cur.execute("SELECT room_id FROM rooms WHERE room_id = %s", (new_room_id,))
             if cur.fetchone():
-                flash('该楼栋中此寝室号已存在', 'danger')
+                flash('该寝室号已存在', 'danger')
                 cur.close()
                 return redirect(url_for('rooms'))
 
@@ -1454,64 +1404,65 @@ def edit_room(building_id, room_id):
             # 更新寝室表
             cur.execute("""
                 UPDATE rooms 
-                SET building_id=%s, room_id=%s, capacity=%s, fee=%s, phone=%s
-                WHERE building_id=%s AND room_id=%s
-            """, (new_building_id, new_room_id, capacity, fee, phone, building_id, room_id))
+                SET room_id=%s, building_id=%s, capacity=%s, fee=%s, phone=%s
+                WHERE room_id=%s
+            """, (new_room_id, building_id, capacity, fee, phone, room_id))
 
             # 更新学生表
             cur.execute("""
                 UPDATE students 
                 SET building_id=%s, room_id=%s
-                WHERE building_id=%s AND room_id=%s
-            """, (new_building_id, new_room_id, building_id, room_id))
+                WHERE room_id=%s
+            """, (building_id, new_room_id, room_id))
 
             # 更新交费记录表
             cur.execute("""
                 UPDATE payments 
                 SET building_id=%s, room_id=%s
-                WHERE building_id=%s AND room_id=%s
-            """, (new_building_id, new_room_id, building_id, room_id))
+                WHERE room_id=%s
+            """, (building_id, new_room_id, room_id))
 
             mysql.connection.commit()
-            logger.info(f"编辑寝室成功 - 原楼号: {building_id}, 原寝室号: {room_id}",
-                       extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
+            logger.info(f"编辑寝室成功 - 原寝室号: {room_id}, 新寝室号: {new_room_id}",
+                        extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
             flash('寝室信息更新成功', 'success')
 
         except Exception as e:
             mysql.connection.rollback()
-            logger.error(f"编辑寝室事务失败 - 楼号: {building_id}, 寝室号: {room_id}, 错误: {str(e)}",
-                        extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
+            logger.error(f"编辑寝室事务失败 - 寝室号: {room_id}, 错误: {str(e)}",
+                         extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
             flash(f'更新失败: {str(e)}', 'danger')
         finally:
             cur.close()
 
     except Exception as e:
-        logger.error(f"编辑寝室失败 - 楼号: {building_id}, 寝室号: {room_id}, 错误: {str(e)}",
-                    extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
+        logger.error(f"编辑寝室失败 - 寝室号: {room_id}, 错误: {str(e)}",
+                     extra={'user_id': session['user_id'], 'operation': '编辑寝室'})
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('rooms'))
 
-@app.route('/rooms/delete/<building_id>/<room_id>', methods=['POST'])
+
+@app.route('/rooms/delete/<room_id>', methods=['POST'])
 @login_required
 @log_operation("删除寝室")
-def delete_room(building_id, room_id):
+def delete_room(room_id):
     """删除寝室"""
     try:
-        logger.info(f"删除寝室 - 楼号: {building_id}, 寝室号: {room_id}, 操作者: {session['user_id']}",
-                   extra={'user_id': session['user_id'], 'operation': '删除寝室'})
+        logger.info(f"删除寝室 - 寝室号: {room_id}, 操作者: {session['user_id']}",
+                    extra={'user_id': session['user_id'], 'operation': '删除寝室'})
 
         cur = mysql.connection.cursor()
-        cur.execute("DELETE FROM rooms WHERE building_id = %s AND room_id = %s", (building_id, room_id))
+        cur.execute("DELETE FROM rooms WHERE room_id = %s", (room_id,))
         mysql.connection.commit()
         cur.close()
 
-        logger.info(f"删除寝室成功 - 楼号: {building_id}, 寝室号: {room_id}",
-                   extra={'user_id': session['user_id'], 'operation': '删除寝室'})
+        logger.info(f"删除寝室成功 - 寝室号: {room_id}",
+                    extra={'user_id': session['user_id'], 'operation': '删除寝室'})
         flash('寝室删除成功', 'success')
     except Exception as e:
-        logger.error(f"删除寝室失败 - 楼号: {building_id}, 寝室号: {room_id}, 错误: {str(e)}",
-                    extra={'user_id': session['user_id'], 'operation': '删除寝室'})
+        logger.error(f"删除寝室失败 - 寝室号: {room_id}, 错误: {str(e)}",
+                     extra={'user_id': session['user_id'], 'operation': '删除寝室'})
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('rooms'))
@@ -1524,7 +1475,7 @@ def api_get_rooms(building_id):
     logger.info(f"API获取房间列表 - 楼号: {building_id}",
                extra={'user_id': session['user_id'], 'operation': '获取房间列表'})
     cur = mysql.connection.cursor()
-    cur.execute("SELECT room_id, capacity, fee FROM rooms WHERE building_id = %s ORDER BY CAST(room_id AS UNSIGNED), room_id", (building_id,))
+    cur.execute("SELECT room_id, capacity, fee FROM rooms WHERE building_id = %s ORDER BY LENGTH(room_id), room_id", (building_id,))
     rooms = cur.fetchall()
     cur.close()
     return jsonify(rooms)
@@ -1552,11 +1503,11 @@ def payments():
     cur = mysql.connection.cursor()
 
     query = """
-        SELECT p.*, s.name as student_name, s.major, s.class, s.building_id, s.room_id
-        FROM payments p
-        JOIN students s ON p.student_id = s.student_id
-        WHERE 1=1
-    """
+            SELECT p.*, s.name as student_name, s.major, s.class, s.building_id, s.room_id
+            FROM payments p
+            JOIN students s ON p.student_id = s.student_id
+            WHERE 1=1
+        """
     params = []
 
     if payment_id:
@@ -1810,17 +1761,17 @@ def reports():
 
     # 欠费学生
     cur.execute("""
-        SELECT s.student_id, s.name, s.major, s.class, s.building_id, s.room_id,
-               COALESCE(SUM(CASE WHEN p.payment_type = '住宿费' THEN p.amount ELSE 0 END), 0) as paid_amount,
-               COALESCE(r.fee, 1200) as should_pay
-        FROM students s
-        LEFT JOIN rooms r ON s.room_id = r.room_id
-        LEFT JOIN payments p ON s.student_id = p.student_id 
-        GROUP BY s.student_id, s.name, s.major, s.class, s.building_id, s.room_id, r.fee
-        HAVING paid_amount < should_pay OR (r.fee IS NOT NULL AND paid_amount = 0)
-        ORDER BY (should_pay - paid_amount) DESC
-        LIMIT 20
-    """)
+            SELECT s.student_id, s.name, s.major, s.class, s.building_id, s.room_id,
+                   COALESCE(SUM(CASE WHEN p.payment_type = '住宿费' THEN p.amount ELSE 0 END), 0) as paid_amount,
+                   COALESCE(r.fee, 1200) as should_pay
+            FROM students s
+            LEFT JOIN rooms r ON s.room_id = r.room_id
+            LEFT JOIN payments p ON s.student_id = p.student_id 
+            GROUP BY s.student_id, s.name, s.major, s.class, s.building_id, s.room_id, r.fee
+            HAVING paid_amount < should_pay OR (r.fee IS NOT NULL AND paid_amount = 0)
+            ORDER BY (should_pay - paid_amount) DESC
+            LIMIT 20
+        """)
     arrears_students = cur.fetchall()
 
     cur.close()

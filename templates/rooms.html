@@ -84,7 +84,8 @@
             <table class="table table-hover align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th width="15%">公寓楼-寝室号</th>
+                        <th width="15%">寝室号</th>
+                        <th width="10%">所属楼栋</th>
                         <th width="10%">可住人数</th>
                         <th width="10%">当前入住</th>
                         <th width="10%">剩余床位</th>
@@ -98,9 +99,9 @@
                     {% for room in rooms %}
                     <tr>
                         <td>
-                            <strong class="text-primary">{{ room.building_id }}-{{ room.room_id }}</strong>
-                            <div><small class="text-muted">{{ room.building_id }}</small></div>
+                            <strong class="text-primary">{{ room.room_id }}</strong>
                         </td>
+                        <td>{{ room.building_id }}</td>
                         <td class="text-center">{{ room.capacity }}</td>
                         <td class="text-center">
                             <strong>{{ room.current_occupancy }}</strong>
@@ -139,12 +140,12 @@
                         <td>
                             <div class="btn-group btn-group-sm" role="group">
                                 <button class="btn btn-outline-primary"
-                                        onclick="editRoom('{{ room.building_id }}', '{{ room.room_id }}', {{ room.capacity }}, {{ room.fee }}, '{{ room.phone or '' }}')"
+                                        onclick="editRoom('{{ room.room_id }}', '{{ room.building_id }}', {{ room.capacity }}, {{ room.fee }}, '{{ room.phone or '' }}')"
                                         title="编辑">
                                     <i class="bi bi-pencil"></i>
                                 </button>
                                 <button class="btn btn-outline-danger"
-                                        onclick="confirmDeleteRoom('{{ room.building_id }}', '{{ room.room_id }}', {{ room.current_occupancy }})"
+                                        onclick="confirmDeleteRoom('{{ room.room_id }}', {{ room.current_occupancy }})"
                                         title="删除">
                                     <i class="bi bi-trash"></i>
                                 </button>
@@ -153,7 +154,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-4">
+                        <td colspan="9" class="text-center text-muted py-4">
                             <i class="bi bi-inbox" style="font-size: 2rem;"></i>
                             <p class="mt-2">暂无寝室信息</p>
                         </td>
@@ -225,10 +226,10 @@
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label for="addRoomId" class="form-label">寝室号 <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="addRoomId" name="room_id"
+                        <label for="addRoomNumber" class="form-label">寝室号（数字部分） <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="addRoomNumber" name="room_number"
                                required maxlength="10" placeholder="例如: 101, 201">
-                        <div class="form-text">纯数字，如101、201等</div>
+                        <div class="form-text">纯数字，如101、201等。完整寝室号将自动生成为"楼号+数字"，如A栋101 → A101</div>
                     </div>
                     <div class="mb-3">
                         <label for="addCapacity" class="form-label">可住人数 <span class="text-danger">*</span></label>
@@ -275,6 +276,7 @@
             </div>
             <form method="POST" id="editRoomForm" onsubmit="return validateRoomForm(this)">
                 <div class="modal-body">
+                    <input type="hidden" id="editOriginalRoomId" name="original_room_id">
                     <div class="mb-3">
                         <label for="editRoomBuilding" class="form-label">所属公寓楼 <span class="text-danger">*</span></label>
                         <select class="form-select" id="editRoomBuilding" name="building_id" required>
@@ -284,8 +286,9 @@
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label for="editRoomId" class="form-label">寝室号 <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="editRoomId" name="room_id" required>
+                        <label for="editRoomNumber" class="form-label">寝室号（数字部分） <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="editRoomNumber" name="room_number" required>
+                        <div class="form-text">纯数字，如101、201等</div>
                     </div>
                     <div class="mb-3">
                         <label for="editCapacity" class="form-label">可住人数 <span class="text-danger">*</span></label>
@@ -320,21 +323,26 @@
 {% block extra_js %}
 <script>
 // 编辑寝室
-function editRoom(buildingId, roomId, capacity, fee, phone) {
+function editRoom(roomId, buildingId, capacity, fee, phone) {
+    // 从完整寝室号中提取数字部分
+    // 例如：A101 → 101
+    let roomNumber = roomId.replace(buildingId, '');
+
+    document.getElementById('editOriginalRoomId').value = roomId;
     document.getElementById('editRoomBuilding').value = buildingId;
-    document.getElementById('editRoomId').value = roomId;
+    document.getElementById('editRoomNumber').value = roomNumber;
     document.getElementById('editCapacity').value = capacity;
     document.getElementById('editFee').value = fee;
     document.getElementById('editPhone').value = phone || '';
-    document.getElementById('editRoomForm').action = `/rooms/edit/${encodeURIComponent(buildingId)}/${encodeURIComponent(roomId)}`;
+    document.getElementById('editRoomForm').action = `/rooms/edit/${encodeURIComponent(roomId)}`;
 
     const modal = new bootstrap.Modal(document.getElementById('editRoomModal'));
     modal.show();
 }
 
 // 确认删除寝室
-function confirmDeleteRoom(buildingId, roomId, currentOccupancy) {
-    let message = `确定要删除寝室 ${buildingId}-${roomId} 吗？\n\n`;
+function confirmDeleteRoom(roomId, currentOccupancy) {
+    let message = `确定要删除寝室 ${roomId} 吗？\n\n`;
 
     if (currentOccupancy > 0) {
         message += `⚠️ 警告: 该寝室还有 ${currentOccupancy} 名学生入住！\n`;
@@ -345,7 +353,7 @@ function confirmDeleteRoom(buildingId, roomId, currentOccupancy) {
     if (confirm(message)) {
         const form = document.createElement('form');
         form.method = 'POST';
-        form.action = `/rooms/delete/${encodeURIComponent(buildingId)}/${encodeURIComponent(roomId)}`;
+        form.action = `/rooms/delete/${encodeURIComponent(roomId)}`;
         document.body.appendChild(form);
         form.submit();
     }
@@ -354,7 +362,7 @@ function confirmDeleteRoom(buildingId, roomId, currentOccupancy) {
 // 表单验证
 function validateRoomForm(form) {
     const buildingId = form.querySelector('[name="building_id"]').value;
-    const roomId = form.querySelector('[name="room_id"]').value;
+    const roomNumber = form.querySelector('[name="room_number"]').value;
     const capacity = parseInt(form.querySelector('[name="capacity"]').value);
     const fee = parseFloat(form.querySelector('[name="fee"]').value);
 
@@ -363,8 +371,8 @@ function validateRoomForm(form) {
         return false;
     }
 
-    if (!roomId || !/^\d+$/.test(roomId)) {
-        alert('寝室号必须为纯数字');
+    if (!roomNumber || !/^\d+$/.test(roomNumber)) {
+        alert('寝室号数字部分必须为纯数字');
         return false;
     }
 

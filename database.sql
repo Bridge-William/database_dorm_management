@@ -24,20 +24,20 @@ CREATE TABLE buildings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='公寓楼信息表';
 
--- 3. 寝室表 (修改主键为复合主键)
+-- 3. 寝室表 (修改为单一主键，寝室号格式如"A101")
 CREATE TABLE rooms (
+    room_id VARCHAR(20) PRIMARY KEY COMMENT '寝室号（格式：楼号+数字，如A101）',
     building_id VARCHAR(20) NOT NULL COMMENT '公寓号',
-    room_id VARCHAR(10) NOT NULL COMMENT '寝室号（纯数字，如101）',
     capacity INT NOT NULL COMMENT '可住人数',
     fee DECIMAL(10,2) NOT NULL COMMENT '住宿费用',
     phone VARCHAR(20) COMMENT '电话',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    PRIMARY KEY (building_id, room_id),
     FOREIGN KEY (building_id) REFERENCES buildings(building_id)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
-    INDEX idx_building_room (building_id, room_id)
+    INDEX idx_building (building_id),
+    INDEX idx_room_id (room_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='寝室信息表';
 
 -- 4. 学生表
@@ -50,13 +50,13 @@ CREATE TABLE students (
     class VARCHAR(50) NOT NULL COMMENT '班级',
     phone VARCHAR(20) NOT NULL COMMENT '联系方式',
     building_id VARCHAR(20) COMMENT '公寓楼号',
-    room_id VARCHAR(10) COMMENT '寝室号',
+    room_id VARCHAR(20) COMMENT '寝室号',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (building_id) REFERENCES buildings(building_id)
         ON DELETE SET NULL
         ON UPDATE CASCADE,
-    FOREIGN KEY (building_id, room_id) REFERENCES rooms(building_id, room_id)
+    FOREIGN KEY (room_id) REFERENCES rooms(room_id)
         ON DELETE SET NULL
         ON UPDATE CASCADE,
     INDEX idx_name (name),
@@ -69,7 +69,7 @@ CREATE TABLE students (
 CREATE TABLE payments (
     payment_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '交费编号',
     building_id VARCHAR(20) NOT NULL COMMENT '公寓号',
-    room_id VARCHAR(10) NOT NULL COMMENT '寝室号',
+    room_id VARCHAR(20) NOT NULL COMMENT '寝室号',
     payment_date DATE NOT NULL COMMENT '交费时间',
     payment_type ENUM('住宿费', '水电费', '其他') NOT NULL COMMENT '交费类型',
     amount DECIMAL(10,2) NOT NULL COMMENT '金额',
@@ -80,14 +80,14 @@ CREATE TABLE payments (
     FOREIGN KEY (building_id) REFERENCES buildings(building_id)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
-    FOREIGN KEY (building_id, room_id) REFERENCES rooms(building_id, room_id)
+    FOREIGN KEY (room_id) REFERENCES rooms(room_id)
         ON DELETE CASCADE
         ON UPDATE CASCADE,
     FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
     INDEX idx_student (student_id),
     INDEX idx_date (payment_date),
     INDEX idx_type (payment_type),
-    INDEX idx_building_room (building_id, room_id)
+    INDEX idx_room (room_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='交费记录表';
 
 -- 6. 用户表（添加密保字段）
@@ -178,31 +178,31 @@ INSERT INTO buildings (building_id, floors, rooms_count, commission_date) VALUES
 ('C栋', 8, 160, '2021-09-01'),
 ('D栋', 8, 160, '2021-09-01');
 
--- 插入寝室数据（修改为纯数字寝室号）
-INSERT INTO rooms (building_id, room_id, capacity, fee, phone) VALUES
-('A栋', '101', 4, 1200.00, '8101'),
-('A栋', '102', 4, 1200.00, '8102'),
-('A栋', '201', 4, 1200.00, '8201'),
-('A栋', '202', 4, 1200.00, '8202'),
-('B栋', '101', 4, 1200.00, '8301'),
-('B栋', '102', 4, 1200.00, '8302'),
-('B栋', '201', 4, 1200.00, '8401'),
-('C栋', '101', 6, 1000.00, '8501'),
-('C栋', '102', 6, 1000.00, '8502'),
-('D栋', '101', 6, 1000.00, '8601');
+-- 插入寝室数据（修改为楼号+数字格式，如A101）
+INSERT INTO rooms (room_id, building_id, capacity, fee, phone) VALUES
+('A101', 'A栋', 4, 1200.00, '8101'),
+('A102', 'A栋', 4, 1200.00, '8102'),
+('A201', 'A栋', 4, 1200.00, '8201'),
+('A202', 'A栋', 4, 1200.00, '8202'),
+('B101', 'B栋', 4, 1200.00, '8301'),
+('B102', 'B栋', 4, 1200.00, '8302'),
+('B201', 'B栋', 4, 1200.00, '8401'),
+('C101', 'C栋', 6, 1000.00, '8501'),
+('C102', 'C栋', 6, 1000.00, '8502'),
+('D101', 'D栋', 6, 1000.00, '8601');
 
 -- 插入学生数据
 INSERT INTO students (student_id, name, gender, ethnicity, major, class, phone, building_id, room_id) VALUES
-('2024001', '张三', '男', '汉族', '计算机科学与技术', '计科2401', '13800138001', 'A栋', '101'),
-('2024002', '李四', '男', '汉族', '计算机科学与技术', '计科2401', '13800138002', 'A栋', '101'),
-('2024003', '王五', '女', '汉族', '软件工程', '软工2401', '13800138003', 'A栋', '102'),
-('2024004', '赵六', '女', '回族', '软件工程', '软工2401', '13800138004', 'A栋', '102'),
-('2024005', '钱七', '男', '汉族', '电子信息工程', '电信2401', '13800138005', 'B栋', '101'),
-('2024006', '孙八', '男', '汉族', '电子信息工程', '电信2401', '13800138006', 'B栋', '101'),
-('2024007', '周九', '女', '汉族', '通信工程', '通信2401', '13800138007', 'C栋', '101'),
-('2024008', '吴十', '女', '满族', '通信工程', '通信2401', '13800138008', 'C栋', '101'),
-('2024009', '郑一', '男', '汉族', '物联网工程', '物联2401', '13800138009', 'D栋', '101'),
-('2024010', '刘二', '男', '汉族', '物联网工程', '物联2401', '13800138010', 'D栋', '101');
+('2024001', '张三', '男', '汉族', '计算机科学与技术', '计科2401', '13800138001', 'A栋', 'A101'),
+('2024002', '李四', '男', '汉族', '计算机科学与技术', '计科2401', '13800138002', 'A栋', 'A101'),
+('2024003', '王五', '女', '汉族', '软件工程', '软工2401', '13800138003', 'A栋', 'A102'),
+('2024004', '赵六', '女', '回族', '软件工程', '软工2401', '13800138004', 'A栋', 'A102'),
+('2024005', '钱七', '男', '汉族', '电子信息工程', '电信2401', '13800138005', 'B栋', 'B101'),
+('2024006', '孙八', '男', '汉族', '电子信息工程', '电信2401', '13800138006', 'B栋', 'B101'),
+('2024007', '周九', '女', '汉族', '通信工程', '通信2401', '13800138007', 'C栋', 'C101'),
+('2024008', '吴十', '女', '满族', '通信工程', '通信2401', '13800138008', 'C栋', 'C101'),
+('2024009', '郑一', '男', '汉族', '物联网工程', '物联2401', '13800138009', 'D栋', 'D101'),
+('2024010', '刘二', '男', '汉族', '物联网工程', '物联2401', '13800138010', 'D栋', 'D101');
 
 -- 插入用户数据 (密码统一为: admin123, 使用SHA256加密)
 -- 注意：新增了密保字段，默认使用第一个问题，答案为默认加密值
@@ -222,16 +222,16 @@ INSERT INTO user_requests (user_id, password, realname, permission, job_title, e
 
 -- 插入交费记录
 INSERT INTO payments (building_id, room_id, payment_date, payment_type, amount, student_id, remark) VALUES
-('A栋', '101', '2025-09-01', '住宿费', 1200.00, '2024001', '2025-2026学年第一学期'),
-('A栋', '101', '2025-09-01', '住宿费', 1200.00, '2024002', '2025-2026学年第一学期'),
-('A栋', '102', '2025-09-01', '住宿费', 1200.00, '2024003', '2025-2026学年第一学期'),
-('A栋', '102', '2025-09-01', '住宿费', 1200.00, '2024004', '2025-2026学年第一学期'),
-('B栋', '101', '2025-09-05', '住宿费', 1200.00, '2024005', '2025-2026学年第一学期'),
-('B栋', '101', '2025-09-05', '住宿费', 1200.00, '2024006', '2025-2026学年第一学期'),
-('A栋', '101', '2025-10-10', '水电费', 150.00, '2024001', '9月水电费'),
-('A栋', '102', '2025-10-10', '水电费', 180.00, '2024003', '9月水电费'),
-('C栋', '101', '2025-09-10', '住宿费', 1000.00, '2024007', '2025-2026学年第一学期'),
-('D栋', '101', '2025-09-10', '住宿费', 1000.00, '2024009', '2025-2026学年第一学期');
+('A栋', 'A101', '2025-09-01', '住宿费', 1200.00, '2024001', '2025-2026学年第一学期'),
+('A栋', 'A101', '2025-09-01', '住宿费', 1200.00, '2024002', '2025-2026学年第一学期'),
+('A栋', 'A102', '2025-09-01', '住宿费', 1200.00, '2024003', '2025-2026学年第一学期'),
+('A栋', 'A102', '2025-09-01', '住宿费', 1200.00, '2024004', '2025-2026学年第一学期'),
+('B栋', 'B101', '2025-09-05', '住宿费', 1200.00, '2024005', '2025-2026学年第一学期'),
+('B栋', 'B101', '2025-09-05', '住宿费', 1200.00, '2024006', '2025-2026学年第一学期'),
+('A栋', 'A101', '2025-10-10', '水电费', 150.00, '2024001', '9月水电费'),
+('A栋', 'A102', '2025-10-10', '水电费', 180.00, '2024003', '9月水电费'),
+('C栋', 'C101', '2025-09-10', '住宿费', 1000.00, '2024007', '2025-2026学年第一学期'),
+('D栋', 'D101', '2025-09-10', '住宿费', 1000.00, '2024009', '2025-2026学年第一学期');
 
 -- 插入示例通知数据
 INSERT INTO announcements (title, content, publisher_id, publisher_name, permission, created_at) VALUES
@@ -265,15 +265,15 @@ GROUP BY s.student_id, s.name, s.major, s.class, s.building_id, s.room_id;
 -- 创建视图：寝室入住情况
 CREATE VIEW room_occupancy AS
 SELECT
-    r.building_id,
     r.room_id,
+    r.building_id,
     r.capacity,
     r.fee,
     COUNT(s.student_id) as current_occupancy,
     r.capacity - COUNT(s.student_id) as available_beds
 FROM rooms r
-LEFT JOIN students s ON r.building_id = s.building_id AND r.room_id = s.room_id
-GROUP BY r.building_id, r.room_id, r.capacity, r.fee;
+LEFT JOIN students s ON r.room_id = s.room_id
+GROUP BY r.room_id, r.building_id, r.capacity, r.fee;
 
 -- ================================
 -- 显示数据库信息
@@ -350,6 +350,10 @@ SELECT
 FROM users u
 LEFT JOIN security_questions q ON u.question_id = q.question_id
 ORDER BY u.user_id;
+
+-- 显示寝室号格式示例
+SELECT '新寝室号格式示例:' as note;
+SELECT building_id, room_id FROM rooms LIMIT 5;
 
 -- 数据库创建完成
 SELECT '数据库创建成功！包含密保问题功能。' as message;
